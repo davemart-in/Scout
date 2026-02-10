@@ -1,4 +1,35 @@
-# PR Creation Prompt Template
-# This file will be populated in Prompt 8
+I need you to create a fix for the following issue in this repository.
 
-Placeholder PR creation prompt template.
+{{#is_github}}
+ISSUE: Fixes #{{source_id}}
+{{/is_github}}
+{{#is_linear}}
+ISSUE: Fixes {{source_id}}
+{{/is_linear}}
+
+ISSUE TITLE: {{title}}
+DESCRIPTION: {{description}}
+LABELS: {{labels}}
+{{#has_context}}
+
+ADDITIONAL CONTEXT:
+{{context}}
+{{/has_context}}
+
+Instructions:
+1. Create a new branch named: fix/{{source_id}}-{{slug}}
+2. Understand the codebase relevant to this issue
+3. Implement the fix with clean, well-tested code
+4. Commit your changes with a descriptive commit message referencing the issue
+5. Push the branch to origin
+{{#auto_pr}}
+6. Create a pull request with:
+   - Title: Fix {{source_id}}: {{title}}
+   - Body: Describe what was changed and why, reference the original issue
+{{/auto_pr}}
+{{^auto_pr}}
+6. Do NOT create a pull request — just push the branch
+{{/auto_pr}}
+
+When done, output the line: ISSUE_AGENT_COMPLETE:{{callback_id}}
+If you encounter an error you cannot resolve, output: ISSUE_AGENT_FAILED:{{callback_id}}

@@ -4,7 +4,7 @@ A local PHP application that connects to GitHub/Linear, pulls issues, uses AI to
 
 ## Implementation Progress
 
-**Overall: 7/11 prompts completed (64%)**
+**Overall: 8/11 prompts completed (73%)**
 
 ### Completed ✅
 - [x] **Prompt 1:** Project Scaffolding & Database
@@ -14,10 +14,10 @@ A local PHP application that connects to GitHub/Linear, pulls issues, uses AI to
 - [x] **Prompt 5:** Linear Integration (GraphQL API, team/issue fetching)
 - [x] **Prompt 6:** Main UI - Issues Table & Controls
 - [x] **Prompt 7:** AI Analysis System (OpenAI/Anthropic integration, issue assessment)
+- [x] **Prompt 8:** Claude Code Launcher & Callback (terminal launch, progress tracking)
 
 ### Not Started ⬜
-- [ ] **Prompt 8:** Claude Code Launcher & Callback ← *Next Up*
-- [ ] **Prompt 9:** Polling, Status Updates & PR Detection
+- [ ] **Prompt 9:** Polling, Status Updates & PR Detection ← *Next Up*
 - [ ] **Prompt 10:** Styling Polish (Vercel/shadcn aesthetic)
 - [ ] **Prompt 11:** Error Handling, Edge Cases & Documentation
 
@@ -32,10 +32,11 @@ A local PHP application that connects to GitHub/Linear, pulls issues, uses AI to
 - ✅ Database persistence with SQLite
 - ✅ **AI-powered issue assessment** (OpenAI/Anthropic integration)
 - ✅ **Batch analysis** of issues (automatically categorizes as "PR capable" or "too complex")
+- ✅ **Claude Code integration** (launches in terminal, tracks progress via callbacks)
+- ✅ **PR creation workflow** (creates branches, optional PR creation based on settings)
 
 ### What's Next
-- ⬜ Claude Code integration for automated PR creation
-- ⬜ Real-time status updates and polling
+- ⬜ Real-time polling and status updates
 - ⬜ Final UI polish and error handling
 
 ## Prerequisites

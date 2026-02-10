@@ -71,18 +71,18 @@ const API = {
         }
     },
 
-    async createPR(issueId) {
+    async createPR(issueId, context = '') {
         try {
             const response = await fetch('/api/launch', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    action: 'create_pr',
-                    issue_id: issueId
+                    issue_id: issueId,
+                    context: context
                 })
             });
             const data = await response.json();
-            if (data.status === 'ok') {
+            if (data.status === 'launched') {
                 return data;
             }
             throw new Error(data.error || 'Failed to create PR');

@@ -253,3 +253,48 @@
         </td>
     </tr>
 </script>
+
+<!-- Template: PR Context Modal -->
+<script type="text/html" id="tmpl-prContextModal">
+    <div class="modal-overlay" id="prContextModalOverlay">
+        <div class="modal pr-context-modal">
+            <div class="modal-header">
+                <h2>Create Pull Request</h2>
+                <button class="modal-close" id="closePrContext">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Issue</label>
+                    <div class="issue-summary">
+                        <span class="badge badge-{{source}}">{{sourceId}}</span>
+                        <strong>{{title}}</strong>
+                    </div>
+                    {{summaryHtml}}
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Additional Context (Optional)</label>
+                    <textarea
+                        id="prContext"
+                        class="form-textarea"
+                        placeholder="Add any additional context, implementation hints, or specific requirements for Claude Code..."
+                        rows="6"></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Model</label>
+                    <div class="model-info">
+                        {{model}}
+                        <a href="#" id="changePrModel" class="text-link">Change in Settings</a>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="cancelPrContext">Cancel</button>
+                <button class="btn btn-primary" id="confirmPrContext" data-issue-id="{{issueId}}">
+                    Launch Claude Code
+                </button>
+            </div>
+        </div>
+    </div>
+</script>

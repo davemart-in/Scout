@@ -210,24 +210,124 @@ const IssuesManager = {
         }
     },
 
-    async createPR(issueId) {
-        const issue = this.currentIssues.find(i => i.id === issueId);
+    showPRContextModal(issueId) {
+        // Convert to number and compare, handling both string and number IDs
+        const issue = this.currentIssues.find(i => parseInt(i.id) === parseInt(issueId));
         if (!issue) {
             showToast('Issue not found', 'error');
             return;
         }
 
-        showToast(`Creating PR for: ${issue.title}`, 'info');
+        // Get PR creation model from settings
+        const model = state.settings?.pr_creation_model || 'claude-3-5-sonnet-20241022';
 
+        // Build summary HTML if summary exists
+        const summaryHtml = issue.summary
+            ? `<div class="issue-summary-text">${issue.summary}</div>`
+            : '';
+
+        // Prepare modal data
+        const modalData = {
+            issueId: issue.id,
+            source: issue.source,
+            sourceId: issue.source_id,
+            title: issue.title,
+            summaryHtml: summaryHtml,
+            model: model
+        };
+
+        // Render and show modal
         try {
-            const result = await API.createPR(issueId);
-            showToast('PR creation started', 'success');
-
-            // Reload issues to show updated status
-            await this.loadIssues(state.currentRepoId);
+            const modalHTML = _tmpl('prContextModal', modalData);
+            document.body.insertAdjacentHTML('beforeend', modalHTML);
         } catch (error) {
-            showToast('Failed to create PR', 'error');
+            showToast('Error showing PR context modal', 'error');
+            return;
         }
+
+        // Add event listeners
+        const overlay = document.getElementById('prContextModalOverlay');
+
+        // Show the modal with animation
+        if (overlay) {
+            // Prevent body scroll
+            document.body.classList.add('modal-open');
+            // Force a reflow to ensure the initial state is applied
+            overlay.offsetHeight;
+            // Add show class to make it visible
+            overlay.classList.add('show');
+            const modal = overlay.querySelector('.modal');
+            if (modal) {
+                modal.style.opacity = '1';
+                modal.style.transform = 'scale(1) translateY(0)';
+            }
+        }
+        const closeBtn = document.getElementById('closePrContext');
+        const cancelBtn = document.getElementById('cancelPrContext');
+        const confirmBtn = document.getElementById('confirmPrContext');
+        const contextTextarea = document.getElementById('prContext');
+
+        if (!overlay) {
+            return;
+        }
+
+        const closeModal = () => {
+            document.body.classList.remove('modal-open');
+            overlay.remove();
+        };
+
+        closeBtn.addEventListener('click', closeModal);
+        cancelBtn.addEventListener('click', closeModal);
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) closeModal();
+        });
+
+        // Handle "Change in Settings" link
+        const changePrModelLink = document.getElementById('changePrModel');
+        if (changePrModelLink) {
+            changePrModelLink.addEventListener('click', async (e) => {
+                e.preventDefault();
+                closeModal();
+                // Open settings modal
+                await openSettingsModal();
+            });
+        }
+
+        confirmBtn.addEventListener('click', async () => {
+            const context = contextTextarea.value.trim();
+            confirmBtn.disabled = true;
+            confirmBtn.textContent = 'Launching...';
+
+            try {
+                const result = await API.createPR(issueId, context);
+                showToast('Claude Code launched successfully', 'success');
+                closeModal();
+
+                // Update UI immediately to show in-progress status
+                const row = document.querySelector(`[data-issue-id="${issueId}"]`);
+                if (row) {
+                    const actionCell = row.querySelector('.action-cell');
+                    if (actionCell) {
+                        actionCell.innerHTML = '<span class="spinner"></span> In Progress';
+                    }
+                }
+
+                // Reload issues after a short delay
+                setTimeout(() => this.loadIssues(state.currentRepoId, false), 2000);
+            } catch (error) {
+                showToast(`Failed to launch Claude Code: ${error.message}`, 'error');
+                confirmBtn.disabled = false;
+                confirmBtn.textContent = 'Launch Claude Code';
+            }
+        });
+
+        // Focus on textarea
+        contextTextarea.focus();
+    },
+
+    createPR(issueId) {
+        // Show the context modal instead of directly creating PR
+        this.showPRContextModal(issueId);
     },
 
     updateButtonStyles() {

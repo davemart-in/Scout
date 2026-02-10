@@ -83,20 +83,43 @@ async function loadInitialData() {
     if (state.settings.has_linear) sources.push('linear');
 
     if (sources.length > 0 && state.settings.repos.length > 0) {
-        // Set first source as current
-        state.currentSource = sources[0];
+        // Try to restore saved source from localStorage
+        const savedSource = localStorage.getItem('scout_selected_source');
+        const savedRepoId = localStorage.getItem('scout_selected_repo');
+
+        // Use saved source if it's still available, otherwise use first source
+        if (savedSource && sources.includes(savedSource)) {
+            state.currentSource = savedSource;
+        } else {
+            state.currentSource = sources[0];
+        }
         document.getElementById('source-selector').value = state.currentSource;
 
         // Load repos for this source
         await updateRepoDropdown();
 
-        // If we have repos, select the first one
+        // Check if saved repo is still valid for current source
         const sourceRepos = state.settings.repos.filter(r => r.source === state.currentSource);
-        if (sourceRepos.length > 0) {
-            state.currentRepoId = sourceRepos[0].id;
+        let repoToSelect = null;
+
+        if (savedRepoId) {
+            // Try to find the saved repo in the current source's repos
+            const savedRepo = sourceRepos.find(r => r.id === parseInt(savedRepoId));
+            if (savedRepo) {
+                repoToSelect = savedRepo.id;
+            }
+        }
+
+        // If no saved repo or it's not valid, use the first repo
+        if (!repoToSelect && sourceRepos.length > 0) {
+            repoToSelect = sourceRepos[0].id;
+        }
+
+        if (repoToSelect) {
+            state.currentRepoId = repoToSelect;
             document.getElementById('repo-selector').value = state.currentRepoId;
 
-            // Load issues for the first repo (silently, no notification)
+            // Load issues for the selected repo (silently, no notification)
             await IssuesManager.loadIssues(state.currentRepoId, false);
         }
     }
@@ -153,8 +176,12 @@ function attachMainEventHandlers() {
 
         // Create PR button
         if (e.target.classList.contains('create-pr')) {
+            e.preventDefault();
+            e.stopPropagation();
             const issueId = e.target.dataset.issueId;
-            await IssuesManager.createPR(parseInt(issueId));
+            if (issueId) {
+                await IssuesManager.createPR(parseInt(issueId));
+            }
         }
 
         // Retry PR button
@@ -168,6 +195,8 @@ function attachMainEventHandlers() {
     document.addEventListener('change', async (e) => {
         if (e.target.id === 'source-selector') {
             state.currentSource = e.target.value;
+            // Save to localStorage
+            localStorage.setItem('scout_selected_source', e.target.value);
             await updateRepoDropdown();
 
             // Clear issues display
@@ -177,6 +206,12 @@ function attachMainEventHandlers() {
 
         if (e.target.id === 'repo-selector') {
             state.currentRepoId = e.target.value ? parseInt(e.target.value) : null;
+            // Save to localStorage
+            if (state.currentRepoId) {
+                localStorage.setItem('scout_selected_repo', e.target.value);
+            } else {
+                localStorage.removeItem('scout_selected_repo');
+            }
 
             if (state.currentRepoId) {
                 // Load issues silently when changing repos

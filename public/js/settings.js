@@ -3,12 +3,14 @@
 // Settings-specific functions
 async function openSettingsModal() {
     state.modalOpen = true;
+    document.body.classList.add('modal-open');
     await loadSettings();
     updateSettingsModal();
 }
 
 function closeSettingsModal() {
     state.modalOpen = false;
+    document.body.classList.remove('modal-open');
     updateSettingsModal();
 }
 
