@@ -183,12 +183,105 @@ try {
                             echo json_encode(['error' => 'Failed to fetch issues: ' . $e->getMessage()]);
                         }
                     } elseif ($repo['source'] === 'linear') {
-                        echo json_encode([
-                            'status' => 'ok',
-                            'message' => 'Linear integration will be implemented in Prompt 5',
-                            'new' => 0,
-                            'updated' => 0
-                        ]);
+                        // Include Linear library
+                        require_once __DIR__ . '/../lib/linear.php';
+
+                        // Get Linear token
+                        $linear_token = get_env_value('LINEAR_TOKEN');
+                        if (empty($linear_token)) {
+                            http_response_code(400);
+                            echo json_encode(['error' => 'Linear token not configured']);
+                            break;
+                        }
+
+                        try {
+                            // Fetch issues from Linear
+                            $issues = linear_fetch_issues($linear_token, $repo['source_id']);
+
+                            $new_count = 0;
+                            $updated_count = 0;
+
+                            // Start transaction
+                            $db = get_db();
+                            $db->exec('BEGIN');
+
+                            foreach ($issues as $issue) {
+                                // Check if issue exists
+                                $existing = db_get_one(
+                                    "SELECT id, assessment, pr_status FROM issues
+                                    WHERE source = 'linear' AND source_id = ? AND repo_id = ?",
+                                    [$issue['source_id'], $repo_id]
+                                );
+
+                                // Prepare labels as JSON
+                                $labels_json = json_encode($issue['labels']);
+
+                                if ($existing) {
+                                    // Update existing issue, preserving assessment and pr_status
+                                    $result = db_query(
+                                        "UPDATE issues SET
+                                            title = ?,
+                                            description = ?,
+                                            labels = ?,
+                                            priority = ?,
+                                            source_url = ?,
+                                            status = ?,
+                                            updated_at = CURRENT_TIMESTAMP
+                                        WHERE id = ?",
+                                        [
+                                            $issue['title'],
+                                            $issue['description'],
+                                            $labels_json,
+                                            $issue['priority'],
+                                            $issue['source_url'],
+                                            $issue['status'],
+                                            $existing['id']
+                                        ]
+                                    );
+                                    $updated_count++;
+                                } else {
+                                    // Insert new issue
+                                    $result = db_query(
+                                        "INSERT INTO issues (
+                                            repo_id, source, source_id, source_url,
+                                            title, description, labels, priority,
+                                            status, assessment, created_at
+                                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)",
+                                        [
+                                            $repo_id,
+                                            'linear',
+                                            $issue['source_id'],
+                                            $issue['source_url'],
+                                            $issue['title'],
+                                            $issue['description'],
+                                            $labels_json,
+                                            $issue['priority'],
+                                            $issue['status'],
+                                            $issue['created_at']
+                                        ]
+                                    );
+                                    $new_count++;
+                                }
+                            }
+
+                            // Commit transaction
+                            $db->exec('COMMIT');
+
+                            echo json_encode([
+                                'status' => 'ok',
+                                'new' => $new_count,
+                                'updated' => $updated_count,
+                                'total' => count($issues)
+                            ]);
+
+                        } catch (Exception $e) {
+                            // Rollback on error
+                            if (isset($db)) {
+                                $db->exec('ROLLBACK');
+                            }
+                            http_response_code(500);
+                            echo json_encode(['error' => 'Failed to fetch Linear issues: ' . $e->getMessage()]);
+                        }
                     } else {
                         http_response_code(400);
                         echo json_encode(['error' => 'Invalid repository source']);

@@ -225,12 +225,27 @@ try {
                             echo json_encode(['error' => 'Failed to fetch GitHub repos: ' . $e->getMessage()]);
                         }
                     } elseif ($source === 'linear') {
-                        // Linear will be implemented in Prompt 5
-                        echo json_encode([
-                            'status' => 'ok',
-                            'message' => 'Linear integration will be implemented in Prompt 5',
-                            'repos' => []
-                        ]);
+                        // Include Linear library
+                        require_once __DIR__ . '/../lib/linear.php';
+
+                        // Get Linear token from environment
+                        $linear_token = get_env_value('LINEAR_TOKEN');
+                        if (empty($linear_token)) {
+                            http_response_code(400);
+                            echo json_encode(['error' => 'Linear token not configured']);
+                            break;
+                        }
+
+                        try {
+                            $teams = linear_list_teams($linear_token);
+                            echo json_encode([
+                                'status' => 'ok',
+                                'repos' => $teams // Actually teams, but using same field name for consistency
+                            ]);
+                        } catch (Exception $e) {
+                            http_response_code(500);
+                            echo json_encode(['error' => 'Failed to fetch Linear teams: ' . $e->getMessage()]);
+                        }
                     } else {
                         http_response_code(400);
                         echo json_encode(['error' => 'Invalid source']);

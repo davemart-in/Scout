@@ -1,50 +1,209 @@
 <?php
 
 /**
- * Linear API integration functions
- * This file will be populated in Prompt 5
+ * Linear API Integration Library
  */
 
 /**
- * Make a Linear GraphQL API request
- * @param string $query GraphQL query
- * @param string $token Linear token
- * @param array $variables Query variables
- * @return array Response data
+ * Make a request to the Linear GraphQL API
  */
 function linear_request($query, $token, $variables = []) {
-    // Placeholder - will be implemented in Prompt 5
-    return [];
+    $url = 'https://api.linear.app/graphql';
+
+    $headers = [
+        'Authorization: ' . $token,  // Linear uses plain token format (not Bearer)
+        'Content-Type: application/json'
+    ];
+
+    // Linear expects variables to be an object (not array) or omitted
+    $request_body = ['query' => $query];
+    if (!empty($variables)) {
+        $request_body['variables'] = $variables;
+    }
+
+    $body = json_encode($request_body);
+
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
+
+    $response = curl_exec($ch);
+    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    // curl_close() is deprecated in PHP 8.5+ and has no effect since PHP 8.0
+
+    // Handle HTTP errors
+    if ($http_code >= 400) {
+        // Try to get error details from response
+        $error_details = json_decode($response, true);
+        $error_msg = isset($error_details['errors'][0]['message'])
+            ? $error_details['errors'][0]['message']
+            : "HTTP $http_code";
+        throw new Exception("Linear API error: $error_msg");
+    }
+
+    $data = json_decode($response, true);
+
+    // Check for GraphQL errors
+    if (isset($data['errors']) && !empty($data['errors'])) {
+        $error_messages = array_map(function($err) {
+            return $err['message'] ?? 'Unknown error';
+        }, $data['errors']);
+
+        // Log errors but don't fail if we have partial data
+        error_log('Linear API errors: ' . implode(', ', $error_messages));
+
+        // If we have no data at all, throw exception
+        if (!isset($data['data'])) {
+            throw new Exception('Linear API error: ' . implode(', ', $error_messages));
+        }
+    }
+
+    return $data['data'] ?? [];
 }
 
 /**
  * List Linear teams
- * @param string $token Linear token
- * @return array Team list
  */
 function linear_list_teams($token) {
-    // Placeholder - will be implemented in Prompt 5
-    return [];
+    $query = 'query {
+        teams {
+            nodes {
+                id
+                name
+                key
+            }
+        }
+    }';
+
+    $data = linear_request($query, $token);
+
+    $teams = [];
+    if (isset($data['teams']['nodes'])) {
+        foreach ($data['teams']['nodes'] as $team) {
+            $teams[] = [
+                'source_id' => $team['id'],
+                'name' => $team['name'] . ' (' . $team['key'] . ')'
+            ];
+        }
+    }
+
+    return $teams;
 }
 
 /**
- * Fetch issues for a team
- * @param string $token Linear token
- * @param string $team_id Team ID
- * @param int $limit Maximum number of issues
- * @return array Issue list
+ * Fetch issues for a Linear team
  */
 function linear_fetch_issues($token, $team_id, $limit = 100) {
-    // Placeholder - will be implemented in Prompt 5
-    return [];
+    $query = 'query($teamId: String!, $first: Int!, $after: String) {
+        team(id: $teamId) {
+            issues(
+                filter: { state: { type: { nin: ["completed", "canceled"] } } },
+                first: $first,
+                after: $after
+            ) {
+                pageInfo {
+                    hasNextPage
+                    endCursor
+                }
+                nodes {
+                    id
+                    identifier
+                    url
+                    title
+                    description
+                    priority
+                    priorityLabel
+                    labels {
+                        nodes {
+                            name
+                        }
+                    }
+                    state {
+                        name
+                        type
+                    }
+                    createdAt
+                }
+            }
+        }
+    }';
+
+    $all_issues = [];
+    $after = null;
+    $max_issues = 500; // Safety limit
+    $per_page = min($limit, 100); // Linear's max per page is typically 100
+
+    do {
+        $variables = [
+            'teamId' => $team_id,
+            'first' => $per_page,
+            'after' => $after
+        ];
+
+        $data = linear_request($query, $token, $variables);
+
+        if (!isset($data['team']['issues'])) {
+            break;
+        }
+
+        $issues = $data['team']['issues'];
+
+        // Process issues
+        foreach ($issues['nodes'] as $issue) {
+            // Extract labels
+            $labels = [];
+            if (isset($issue['labels']['nodes'])) {
+                foreach ($issue['labels']['nodes'] as $label) {
+                    $labels[] = $label['name'];
+                }
+            }
+
+            // Determine status from state type
+            $status = 'open';
+            if (isset($issue['state']['type'])) {
+                $state_type = $issue['state']['type'];
+                // Map Linear state types to our simple status
+                if (in_array($state_type, ['completed', 'canceled'])) {
+                    $status = 'closed';
+                }
+            }
+
+            $all_issues[] = [
+                'source_id' => $issue['identifier'], // Use human-readable identifier
+                'source_url' => $issue['url'],
+                'title' => $issue['title'],
+                'description' => $issue['description'] ?? '',
+                'labels' => $labels,
+                'priority' => $issue['priorityLabel'], // Use the label (e.g., "High")
+                'status' => $status,
+                'created_at' => $issue['createdAt']
+            ];
+
+            if (count($all_issues) >= $max_issues) {
+                break 2; // Break out of both loops
+            }
+        }
+
+        // Check for next page
+        $has_next = $issues['pageInfo']['hasNextPage'] ?? false;
+        $after = $issues['pageInfo']['endCursor'] ?? null;
+
+    } while ($has_next && count($all_issues) < $max_issues);
+
+    return $all_issues;
 }
 
 /**
- * Validate Linear token
- * @param string $token Linear token
- * @return bool Token is valid
+ * Validate a Linear token
  */
 function linear_validate_token($token) {
-    // Placeholder - will be implemented in Prompt 5
-    return false;
+    try {
+        $query = 'query { viewer { id } }';
+        $data = linear_request($query, $token);
+        return isset($data['viewer']['id']);
+    } catch (Exception $e) {
+        return false;
+    }
 }
