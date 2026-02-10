@@ -161,20 +161,12 @@ function db_get_all($query, $params = []) {
 }
 
 /**
- * Save a setting with selective encryption
+ * Save a setting (for user preferences only, not API keys)
  * @param string $key Setting key
  * @param string $value Setting value
  * @return bool
  */
 function save_setting($key, $value) {
-    // Include crypto functions
-    require_once __DIR__ . '/crypto.php';
-
-    // Check if this key needs encryption
-    if (needs_encryption($key)) {
-        $value = encrypt_value($value);
-    }
-
     $existing = db_get_one("SELECT id FROM settings WHERE key = ?", [$key]);
 
     if ($existing) {
@@ -191,28 +183,50 @@ function save_setting($key, $value) {
 }
 
 /**
- * Get a setting with selective decryption
+ * Get a setting (for user preferences only, not API keys)
  * @param string $key Setting key
  * @return string
  */
 function get_setting($key) {
-    // Include crypto functions
-    require_once __DIR__ . '/crypto.php';
-
     $row = db_get_one("SELECT value FROM settings WHERE key = ?", [$key]);
+    return $row ? $row['value'] : '';
+}
 
-    if (!$row || empty($row['value'])) {
-        return '';
+/**
+ * Read environment variable from .env file
+ * @param string $key Environment variable name
+ * @return string
+ */
+function get_env_value($key) {
+    // First try to get from environment
+    $value = getenv($key);
+    if ($value !== false) {
+        return $value;
     }
 
-    $value = $row['value'];
-
-    // Check if value is encrypted and decrypt if necessary
-    if (is_encrypted($value)) {
-        $value = decrypt_value($value);
+    // If not set, try to load from .env file
+    $env_file = __DIR__ . '/../.env';
+    if (file_exists($env_file)) {
+        $lines = file($env_file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+        foreach ($lines as $line) {
+            // Skip comments
+            if (strpos(trim($line), '#') === 0) {
+                continue;
+            }
+            // Parse KEY=VALUE
+            if (strpos($line, '=') !== false) {
+                list($env_key, $env_value) = explode('=', $line, 2);
+                if (trim($env_key) === $key) {
+                    $value = trim($env_value);
+                    // Set in environment for future use
+                    putenv("$key=$value");
+                    return $value;
+                }
+            }
+        }
     }
 
-    return $value;
+    return '';
 }
 
 // Initialize database on first include

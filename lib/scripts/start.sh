@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# Issue Agent Startup Script
+# Scout Startup Script
 
 echo "========================================"
-echo "        Issue Agent - Starting          "
+echo "           Scout - Starting             "
 echo "========================================"
 echo ""
 

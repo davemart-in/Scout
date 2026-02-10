@@ -6,22 +6,68 @@ header('Content-Type: application/json');
 // Include database library
 require_once __DIR__ . '/../lib/db.php';
 
+
+/**
+ * Check which tokens/keys are configured in .env
+ */
+function get_token_status() {
+    return [
+        'has_github' => !empty(get_env_value('GITHUB_TOKEN')),
+        'has_linear' => !empty(get_env_value('LINEAR_TOKEN')),
+        'has_openai' => !empty(get_env_value('OPENAI_KEY')),
+        'has_anthropic' => !empty(get_env_value('ANTHROPIC_KEY'))
+    ];
+}
+
+/**
+ * Get all repositories
+ */
+function get_all_repos() {
+    return db_get_all("SELECT id, source, source_id, name, local_path, default_branch, auto_create_pr FROM repos ORDER BY name");
+}
+
 try {
     // Route based on request method
     $method = $_SERVER['REQUEST_METHOD'];
 
     switch ($method) {
         case 'GET':
-            // Placeholder for fetching settings
+            // Get token status and repos
+            $token_status = get_token_status();
+            $repos = get_all_repos();
+
+            // Convert auto_create_pr to boolean
+            foreach ($repos as &$repo) {
+                $repo['auto_create_pr'] = (bool)$repo['auto_create_pr'];
+            }
+
+            // Get model preferences
+            $assessment_model = get_setting('assessment_model') ?: 'gpt-4';
+            $pr_creation_model = get_setting('pr_creation_model') ?: 'claude-3-opus-20240229';
+
+            // Determine available models based on API keys
+            $available_models = [];
+            if ($token_status['has_openai']) {
+                $available_models[] = ['value' => 'gpt-4', 'label' => 'GPT-4', 'provider' => 'openai'];
+                $available_models[] = ['value' => 'gpt-4-turbo-preview', 'label' => 'GPT-4 Turbo', 'provider' => 'openai'];
+                $available_models[] = ['value' => 'gpt-3.5-turbo', 'label' => 'GPT-3.5 Turbo', 'provider' => 'openai'];
+            }
+            if ($token_status['has_anthropic']) {
+                $available_models[] = ['value' => 'claude-3-opus-20240229', 'label' => 'Claude 3 Opus', 'provider' => 'anthropic'];
+                $available_models[] = ['value' => 'claude-3-sonnet-20240229', 'label' => 'Claude 3 Sonnet', 'provider' => 'anthropic'];
+                $available_models[] = ['value' => 'claude-3-haiku-20240307', 'label' => 'Claude 3 Haiku', 'provider' => 'anthropic'];
+            }
+
             echo json_encode([
                 'status' => 'ok',
-                'message' => 'settings GET not yet implemented',
-                'tokens' => [],
-                'repos' => [],
-                'has_github' => false,
-                'has_linear' => false,
-                'has_openai' => false,
-                'has_anthropic' => false
+                'repos' => $repos,
+                'has_github' => $token_status['has_github'],
+                'has_linear' => $token_status['has_linear'],
+                'has_openai' => $token_status['has_openai'],
+                'has_anthropic' => $token_status['has_anthropic'],
+                'assessment_model' => $assessment_model,
+                'pr_creation_model' => $pr_creation_model,
+                'available_models' => $available_models
             ]);
             break;
 
@@ -30,70 +76,155 @@ try {
             $input = json_decode(file_get_contents('php://input'), true);
             $action = $input['action'] ?? '';
 
-            // Placeholder for different actions
             switch ($action) {
+                case 'save_model_preferences':
+                    $assessment_model = $input['assessment_model'] ?? '';
+                    $pr_creation_model = $input['pr_creation_model'] ?? '';
+
+                    // Save both preferences
+                    $success = save_setting('assessment_model', $assessment_model) &&
+                               save_setting('pr_creation_model', $pr_creation_model);
+
+                    if ($success) {
+                        echo json_encode([
+                            'status' => 'ok',
+                            'message' => 'Model preferences saved successfully'
+                        ]);
+                    } else {
+                        http_response_code(500);
+                        echo json_encode(['error' => 'Failed to save model preferences']);
+                    }
+                    break;
+
                 case 'save_token':
-                    echo json_encode([
-                        'status' => 'ok',
-                        'message' => 'save_token not yet implemented'
-                    ]);
-                    break;
-
-                case 'save_repo':
-                    echo json_encode([
-                        'status' => 'ok',
-                        'message' => 'save_repo not yet implemented'
-                    ]);
-                    break;
-
                 case 'delete_token':
+                    // Tokens are now managed in .env file, not through API
+                    http_response_code(400);
                     echo json_encode([
-                        'status' => 'ok',
-                        'message' => 'delete_token not yet implemented'
+                        'error' => 'Tokens must be configured in the .env file',
+                        'message' => 'Edit the .env file to add or update API tokens'
                     ]);
                     break;
 
                 case 'add_repo':
-                    echo json_encode([
-                        'status' => 'ok',
-                        'message' => 'add_repo not yet implemented'
-                    ]);
+                    $source = $input['source'] ?? '';
+                    $source_id = $input['source_id'] ?? '';
+                    $name = $input['name'] ?? '';
+                    $local_path = $input['local_path'] ?? '';
+                    $default_branch = $input['default_branch'] ?? 'main';
+                    $auto_create_pr = $input['auto_create_pr'] ?? 0;
+
+                    // Validate required fields
+                    if (empty($source) || empty($source_id) || empty($name)) {
+                        http_response_code(400);
+                        echo json_encode(['error' => 'Missing required fields']);
+                        break;
+                    }
+
+                    // Validate source
+                    if (!in_array($source, ['github', 'linear'])) {
+                        http_response_code(400);
+                        echo json_encode(['error' => 'Invalid source']);
+                        break;
+                    }
+
+                    // Insert repo
+                    $result = db_query(
+                        "INSERT INTO repos (source, source_id, name, local_path, default_branch, auto_create_pr)
+                         VALUES (?, ?, ?, ?, ?, ?)",
+                        [$source, $source_id, $name, $local_path, $default_branch, $auto_create_pr ? 1 : 0]
+                    );
+
+                    if ($result) {
+                        echo json_encode([
+                            'status' => 'ok',
+                            'message' => 'Repository added successfully',
+                            'id' => $GLOBALS['db']->lastInsertId()
+                        ]);
+                    } else {
+                        http_response_code(500);
+                        echo json_encode(['error' => 'Failed to add repository']);
+                    }
+                    break;
+
+                case 'save_repo':
+                    $id = $input['id'] ?? null;
+                    $local_path = $input['local_path'] ?? '';
+                    $default_branch = $input['default_branch'] ?? 'main';
+                    $auto_create_pr = $input['auto_create_pr'] ?? 0;
+
+                    if (!$id) {
+                        http_response_code(400);
+                        echo json_encode(['error' => 'Repository ID required']);
+                        break;
+                    }
+
+                    // Update repo
+                    $result = db_query(
+                        "UPDATE repos SET local_path = ?, default_branch = ?, auto_create_pr = ? WHERE id = ?",
+                        [$local_path, $default_branch, $auto_create_pr ? 1 : 0, $id]
+                    );
+
+                    if ($result) {
+                        echo json_encode([
+                            'status' => 'ok',
+                            'message' => 'Repository updated successfully'
+                        ]);
+                    } else {
+                        http_response_code(500);
+                        echo json_encode(['error' => 'Failed to update repository']);
+                    }
                     break;
 
                 case 'delete_repo':
-                    echo json_encode([
-                        'status' => 'ok',
-                        'message' => 'delete_repo not yet implemented'
-                    ]);
+                    $id = $input['id'] ?? null;
+
+                    if (!$id) {
+                        http_response_code(400);
+                        echo json_encode(['error' => 'Repository ID required']);
+                        break;
+                    }
+
+                    // Delete repo and associated issues
+                    db_query("DELETE FROM issues WHERE repo_id = ?", [$id]);
+                    $result = db_query("DELETE FROM repos WHERE id = ?", [$id]);
+
+                    if ($result) {
+                        echo json_encode([
+                            'status' => 'ok',
+                            'message' => 'Repository deleted successfully'
+                        ]);
+                    } else {
+                        http_response_code(500);
+                        echo json_encode(['error' => 'Failed to delete repository']);
+                    }
                     break;
 
                 case 'fetch_repos':
+                    // Placeholder for now - will be implemented in Prompt 4/5
+                    $source = $input['source'] ?? '';
+
                     echo json_encode([
                         'status' => 'ok',
-                        'message' => 'fetch_repos not yet implemented'
+                        'message' => 'fetch_repos will be implemented in Prompt 4/5',
+                        'repos' => []
                     ]);
                     break;
 
                 default:
                     http_response_code(400);
-                    echo json_encode([
-                        'error' => 'Invalid action'
-                    ]);
+                    echo json_encode(['error' => 'Invalid action']);
                     break;
             }
             break;
 
         default:
             http_response_code(405);
-            echo json_encode([
-                'error' => 'Method not allowed'
-            ]);
+            echo json_encode(['error' => 'Method not allowed']);
             break;
     }
 
 } catch (Exception $e) {
     http_response_code(500);
-    echo json_encode([
-        'error' => 'Server error: ' . $e->getMessage()
-    ]);
+    echo json_encode(['error' => 'Server error: ' . $e->getMessage()]);
 }
