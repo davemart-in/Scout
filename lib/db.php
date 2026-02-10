@@ -7,6 +7,17 @@ define('DB_PATH', __DIR__ . '/../db/issues.sqlite');
 $db = null;
 
 /**
+ * Get database connection
+ */
+function get_db() {
+    global $db;
+    if (!$db) {
+        db_init();
+    }
+    return $db;
+}
+
+/**
  * Initialize database connection and create tables if needed
  */
 function db_init() {

@@ -782,8 +782,6 @@ input::placeholder {
 }
 
 .issues-table thead {
-    position: sticky;
-    top: 116px;
     background: var(--color-bg-secondary);
     border-bottom: 2px solid var(--color-border);
 }

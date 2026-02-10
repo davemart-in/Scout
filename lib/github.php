@@ -141,38 +141,38 @@ function github_fetch_issues($token, $repo_full_name, $per_page = 100, $page = 1
     $max_issues = 500; // Safety limit
 
     do {
+        // Use GitHub's search API to get only issues (not PRs)
+        // This is more efficient than fetching everything and filtering
         $response = github_request(
-            "/repos/$repo_full_name/issues?state=open&per_page=$per_page&page=$page",
+            "/search/issues?q=repo:$repo_full_name+type:issue+state:open&per_page=$per_page&page=$page&sort=created&order=desc",
             $token
         );
 
+        // Search API returns items in a different structure
+        $items = isset($response['items']) ? $response['items'] : [];
+
         $issues_batch = [];
-        foreach ($response as $key => $issue) {
-            if ($key === '_pagination') continue;
-
-            // Skip pull requests
-            if (is_array($issue) && !isset($issue['pull_request'])) {
-                // Extract labels
-                $labels = [];
-                if (isset($issue['labels']) && is_array($issue['labels'])) {
-                    foreach ($issue['labels'] as $label) {
-                        $labels[] = $label['name'];
-                    }
+        foreach ($items as $issue) {
+            // Extract labels
+            $labels = [];
+            if (isset($issue['labels']) && is_array($issue['labels'])) {
+                foreach ($issue['labels'] as $label) {
+                    $labels[] = $label['name'];
                 }
-
-                $issues_batch[] = [
-                    'source_id' => strval($issue['number']),
-                    'source_url' => $issue['html_url'],
-                    'title' => $issue['title'],
-                    'description' => $issue['body'] ?? '',
-                    'labels' => $labels,
-                    'priority' => null, // GitHub doesn't have built-in priority
-                    'status' => 'open',
-                    'created_at' => $issue['created_at']
-                ];
-
-                $total_fetched++;
             }
+
+            $issues_batch[] = [
+                'source_id' => strval($issue['number']),
+                'source_url' => $issue['html_url'],
+                'title' => $issue['title'],
+                'description' => $issue['body'] ?? '',
+                'labels' => $labels,
+                'priority' => null, // GitHub doesn't have built-in priority
+                'status' => 'open',
+                'created_at' => $issue['created_at']
+            ];
+
+            $total_fetched++;
         }
 
         $all_issues = array_merge($all_issues, $issues_batch);
@@ -182,6 +182,9 @@ function github_fetch_issues($token, $repo_full_name, $per_page = 100, $page = 1
         $page++;
 
     } while ($has_next && $total_fetched < $max_issues);
+
+    // Log summary for debugging
+    error_log("GitHub fetch for $repo_full_name: Found $total_fetched issues (max: $max_issues)");
 
     return $all_issues;
 }
