@@ -1,0 +1,41 @@
+# Project-specific files
+the-plan.md
+scout.dev.key
+scout.dev.crt
+
+# Database files
+db/*.sqlite
+db/*.sqlite-wal
+db/*.sqlite-shm
+db/*.db
+
+# Environment and config files
+.env
+.env.local
+*.local
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# PHP error logs
+error_log
+php_errors.log
+
+# Temporary files
+*.tmp
+*.temp
+*.cache
+/tmp/
+
+# Backup files
+*.bak
+*.backup
+*.old

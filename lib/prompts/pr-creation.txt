@@ -1,0 +1,4 @@
+# PR Creation Prompt Template
+# This file will be populated in Prompt 8
+
+Placeholder PR creation prompt template.

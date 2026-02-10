@@ -1,0 +1,4 @@
+# Issue Assessment Prompt Template
+# This file will be populated in Prompt 7
+
+Placeholder assessment prompt template.
