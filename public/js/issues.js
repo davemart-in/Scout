@@ -149,29 +149,59 @@ const IssuesManager = {
             return;
         }
 
-        const pendingCount = this.currentIssues.filter(i => i.assessment === 'pending').length;
-        if (pendingCount === 0) {
+        const initialPendingCount = this.currentIssues.filter(i => i.assessment === 'pending').length;
+        if (initialPendingCount === 0) {
             showToast('No pending issues to analyze', 'info');
             return;
         }
 
-        showToast(`Analyzing ${pendingCount} issues...`, 'info');
+        showToast(`Starting analysis of ${initialPendingCount} issues...`, 'info');
 
         // Update progress indicator
         const progressIndicator = document.querySelector('.progress-indicator');
         if (progressIndicator) {
             progressIndicator.style.display = 'inline';
-            progressIndicator.textContent = `Analyzing ${pendingCount} issues...`;
+            progressIndicator.textContent = `Analyzing ${initialPendingCount} issues...`;
         }
 
-        try {
-            const result = await API.analyzeIssues(repoId);
-            showToast(`Analyzed ${result.analyzed} issues`, 'success');
+        let totalAnalyzed = 0;
+        let remaining = initialPendingCount;
+        let batchCount = 0;
 
-            // Reload issues to show new assessments
-            await this.loadIssues(repoId);
+        try {
+            // Keep analyzing in batches until all are done
+            while (remaining > 0) {
+                batchCount++;
+
+                // Update progress indicator
+                if (progressIndicator) {
+                    progressIndicator.textContent = `Analyzing: ${totalAnalyzed}/${initialPendingCount} completed...`;
+                }
+
+                const result = await API.analyzeIssues(repoId);
+
+                if (result.analyzed > 0) {
+                    totalAnalyzed += result.analyzed;
+                    remaining = result.remaining;
+
+                    // Reload issues to show new assessments (suppress toast notification)
+                    await this.loadIssues(repoId, false);
+
+                    // If there are more to analyze, wait a moment before continuing
+                    // to avoid overwhelming the API
+                    if (remaining > 0) {
+                        await new Promise(resolve => setTimeout(resolve, 1000));
+                    }
+                } else {
+                    // No issues were analyzed in this batch, stop
+                    break;
+                }
+            }
+
+            showToast(`Analysis complete! Analyzed ${totalAnalyzed} issues in ${batchCount} batch${batchCount > 1 ? 'es' : ''}`, 'success');
+
         } catch (error) {
-            showToast('Failed to analyze issues', 'error');
+            showToast(`Analysis stopped after ${totalAnalyzed} issues: ${error.message || 'Failed to analyze'}`, 'error');
         } finally {
             // Hide progress indicator
             if (progressIndicator) {

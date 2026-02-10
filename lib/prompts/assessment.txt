@@ -1,4 +1,27 @@
-# Issue Assessment Prompt Template
-# This file will be populated in Prompt 7
+You are analyzing software issues to determine if they are suitable for an AI coding agent to create a pull request.
 
-Placeholder assessment prompt template.
+Evaluate the following issue and respond in valid JSON with exactly two fields:
+- "assessment": either "agentic_pr_capable" or "too_complex"
+- "summary": a one-paragraph summary of the issue (2-4 sentences max)
+
+An issue is "agentic_pr_capable" if:
+- It has a clear, well-defined scope
+- It involves a single feature, bug fix, or small refactor
+- The expected changes are localized (not touching many files/systems)
+- It doesn't require deep domain knowledge or architectural decisions
+- It doesn't require external service setup or infrastructure changes
+
+An issue is "too_complex" if:
+- It's vague or open-ended
+- It requires significant architectural changes
+- It spans multiple systems or services
+- It requires human judgment on UX/design decisions
+- It involves security-sensitive changes
+- It requires coordination with external teams or services
+
+ISSUE TITLE: {{title}}
+ISSUE DESCRIPTION: {{description}}
+LABELS: {{labels}}
+PRIORITY: {{priority}}
+
+Respond ONLY with valid JSON. No markdown, no code blocks, no explanation.
