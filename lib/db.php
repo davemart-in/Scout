@@ -161,13 +161,20 @@ function db_get_all($query, $params = []) {
 }
 
 /**
- * Save a setting (placeholder - will be updated in Prompt 2)
+ * Save a setting with selective encryption
  * @param string $key Setting key
  * @param string $value Setting value
  * @return bool
  */
 function save_setting($key, $value) {
-    // This will be updated in Prompt 2 to include encryption
+    // Include crypto functions
+    require_once __DIR__ . '/crypto.php';
+
+    // Check if this key needs encryption
+    if (needs_encryption($key)) {
+        $value = encrypt_value($value);
+    }
+
     $existing = db_get_one("SELECT id FROM settings WHERE key = ?", [$key]);
 
     if ($existing) {
@@ -184,14 +191,28 @@ function save_setting($key, $value) {
 }
 
 /**
- * Get a setting (placeholder - will be updated in Prompt 2)
+ * Get a setting with selective decryption
  * @param string $key Setting key
  * @return string
  */
 function get_setting($key) {
-    // This will be updated in Prompt 2 to include decryption
+    // Include crypto functions
+    require_once __DIR__ . '/crypto.php';
+
     $row = db_get_one("SELECT value FROM settings WHERE key = ?", [$key]);
-    return $row ? $row['value'] : '';
+
+    if (!$row || empty($row['value'])) {
+        return '';
+    }
+
+    $value = $row['value'];
+
+    // Check if value is encrypted and decrypt if necessary
+    if (is_encrypted($value)) {
+        $value = decrypt_value($value);
+    }
+
+    return $value;
 }
 
 // Initialize database on first include
