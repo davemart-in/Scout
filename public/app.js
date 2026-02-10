@@ -234,11 +234,15 @@ function renderSettingsModal() {
     // Render model selection
     const modelSelectionContent = renderModelSelection();
 
-    // Render repo actions
-    const repoActions = [
-        has_github ? '<button class="btn btn-secondary fetch-repos" data-source="github">Fetch GitHub Repos</button>' : '',
-        has_linear ? '<button class="btn btn-secondary fetch-repos" data-source="linear">Fetch Linear Teams</button>' : ''
-    ].filter(Boolean).join('');
+    // Render repo actions - only show buttons if we have the corresponding API keys
+    const repoActions = [];
+    if (has_github) {
+        repoActions.push('<button class="btn btn-secondary fetch-repos" data-source="github">Fetch GitHub Repos</button>');
+    }
+    if (has_linear) {
+        repoActions.push('<button class="btn btn-secondary fetch-repos" data-source="linear">Fetch Linear Teams</button>');
+    }
+    const repoActionsHtml = repoActions.join('');
 
     // Render repo rows
     const repoRows = repos.map(repo => renderRepoRow(repo)).join('');
@@ -250,7 +254,7 @@ function renderSettingsModal() {
         modalClass: state.modalOpen ? 'show' : '',
         apiKeysAlert,
         modelSelectionContent,
-        repoActions,
+        repoActions: repoActionsHtml,
         repoRows,
         emptyState
     });
@@ -305,6 +309,19 @@ function attachEventHandlers() {
         if (e.target.classList.contains('fetch-repos')) {
             const source = e.target.dataset.source;
             showToast(`Fetching ${source} repositories will be implemented in Prompt 4/5`, 'info');
+        }
+
+        // Test connection
+        if (e.target.classList.contains('test-connection')) {
+            const modelType = e.target.dataset.modelType;
+            const selectId = modelType === 'assessment' ? 'assessment-model' : 'pr-creation-model';
+            const selectedModel = document.getElementById(selectId)?.value;
+
+            if (selectedModel) {
+                showToast(`Testing connection to ${selectedModel}... (will be implemented in Prompt 5)`, 'info');
+            } else {
+                showToast('Please select a model first', 'warning');
+            }
         }
 
         // Save model preferences

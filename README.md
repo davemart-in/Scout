@@ -30,6 +30,16 @@ A local PHP application that connects to GitHub/Linear, pulls issues, uses AI to
    ANTHROPIC_KEY=your_anthropic_api_key_here
    ```
 
+   **GitHub Token Setup:**
+   - Go to GitHub Settings → Developer settings → Personal access tokens → Tokens (classic)
+   - Click "Generate new token (classic)"
+   - Required scopes:
+     - `repo` (Full control of private repositories) - for accessing issues and creating PRs
+   - Optional scopes (if needed):
+     - `workflow` - if you need to modify GitHub Actions workflows
+     - `write:packages` - if working with GitHub Packages
+     - `admin:org` → `read:org` - if you need to list organization repositories
+
 3. Run the startup script:
    ```bash
    bash lib/scripts/start.sh

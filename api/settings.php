@@ -42,20 +42,19 @@ try {
             }
 
             // Get model preferences
-            $assessment_model = get_setting('assessment_model') ?: 'gpt-4';
-            $pr_creation_model = get_setting('pr_creation_model') ?: 'claude-3-opus-20240229';
+            $assessment_model = get_setting('assessment_model') ?: 'gpt-5.2';
+            $pr_creation_model = get_setting('pr_creation_model') ?: 'claude-opus-4-6';
 
             // Determine available models based on API keys
             $available_models = [];
             if ($token_status['has_openai']) {
-                $available_models[] = ['value' => 'gpt-4', 'label' => 'GPT-4', 'provider' => 'openai'];
-                $available_models[] = ['value' => 'gpt-4-turbo-preview', 'label' => 'GPT-4 Turbo', 'provider' => 'openai'];
-                $available_models[] = ['value' => 'gpt-3.5-turbo', 'label' => 'GPT-3.5 Turbo', 'provider' => 'openai'];
+                $available_models[] = ['value' => 'gpt-5.2', 'label' => 'GPT-5.2', 'provider' => 'openai'];
+                $available_models[] = ['value' => 'gpt-4o-mini', 'label' => 'GPT-4o Mini', 'provider' => 'openai'];
             }
             if ($token_status['has_anthropic']) {
-                $available_models[] = ['value' => 'claude-3-opus-20240229', 'label' => 'Claude 3 Opus', 'provider' => 'anthropic'];
-                $available_models[] = ['value' => 'claude-3-sonnet-20240229', 'label' => 'Claude 3 Sonnet', 'provider' => 'anthropic'];
-                $available_models[] = ['value' => 'claude-3-haiku-20240307', 'label' => 'Claude 3 Haiku', 'provider' => 'anthropic'];
+                $available_models[] = ['value' => 'claude-opus-4-6', 'label' => 'Claude Opus 4.6', 'provider' => 'anthropic'];
+                $available_models[] = ['value' => 'claude-opus-4-5', 'label' => 'Claude Opus 4.5', 'provider' => 'anthropic'];
+                $available_models[] = ['value' => 'claude-sonnet-4-5', 'label' => 'Claude Sonnet 4.5', 'provider' => 'anthropic'];
             }
 
             echo json_encode([

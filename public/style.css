@@ -632,6 +632,16 @@ input::placeholder {
     margin-top: var(--spacing-xs);
 }
 
+.model-select-row {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.model-select-row .form-select {
+    flex: 1;
+}
+
 /* Responsive adjustments */
 @media (max-width: 768px) {
     .cards-grid {

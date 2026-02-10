@@ -86,16 +86,22 @@
     <div class="model-selection">
         <div class="form-group">
             <label for="assessment-model">Issue Assessment Model</label>
-            <select id="assessment-model" class="form-select">
-                {{assessmentOptions}}
-            </select>
+            <div class="model-select-row">
+                <select id="assessment-model" class="form-select">
+                    {{assessmentOptions}}
+                </select>
+                <button class="btn btn-secondary test-connection" data-model-type="assessment">Test connection</button>
+            </div>
             <p class="help-text">Model used to analyze issues and determine if they're suitable for automated PR creation</p>
         </div>
         <div class="form-group">
             <label for="pr-creation-model">PR Creation Model</label>
-            <select id="pr-creation-model" class="form-select">
-                {{prCreationOptions}}
-            </select>
+            <div class="model-select-row">
+                <select id="pr-creation-model" class="form-select">
+                    {{prCreationOptions}}
+                </select>
+                <button class="btn btn-secondary test-connection" data-model-type="pr-creation">Test connection</button>
+            </div>
             <p class="help-text">Model used by Claude Code to generate the actual pull request</p>
         </div>
         <div class="form-actions">
