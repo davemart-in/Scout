@@ -139,6 +139,32 @@ const API = {
             showToast('Failed to fetch repositories: ' + error.message, 'error');
             throw error;
         }
+    },
+
+    async addRepo(source, sourceId, name) {
+        try {
+            const response = await fetch('/api/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'add_repo',
+                    source: source,
+                    source_id: sourceId,
+                    name: name,
+                    local_path: '',
+                    default_branch: 'main',
+                    auto_create_pr: 0
+                })
+            });
+            const data = await response.json();
+            if (data.status === 'ok') {
+                return data;
+            }
+            throw new Error(data.error || 'Failed to add repository');
+        } catch (error) {
+            showToast('Failed to add repository: ' + error.message, 'error');
+            throw error;
+        }
     }
 };
 
@@ -260,8 +286,90 @@ function renderSettingsModal() {
     });
 }
 
+// Fetch and show repos for selection
+async function fetchAndShowRepos(source) {
+    showToast(`Fetching ${source} repositories...`, 'info');
+
+    try {
+        const result = await API.fetchRepos(source);
+
+        if (!result.repos || result.repos.length === 0) {
+            showToast('No repositories found', 'warning');
+            return;
+        }
+
+        // Get existing repos to filter out already added ones
+        const existingRepos = state.settings.repos
+            .filter(r => r.source === source)
+            .map(r => r.source_id);
+
+        // Filter out already added repos
+        const availableRepos = result.repos.filter(
+            repo => !existingRepos.includes(repo.source_id)
+        );
+
+        if (availableRepos.length === 0) {
+            showToast('All repositories have already been added', 'info');
+            return;
+        }
+
+        // Build checkboxes HTML
+        const repoCheckboxes = availableRepos.map(repo => `
+            <label class="repo-checkbox">
+                <input type="checkbox" value="${repo.source_id}" data-name="${repo.name}">
+                <span>${repo.name}</span>
+            </label>
+        `).join('');
+
+        // Show selection modal
+        const selectionModal = _tmpl('repoSelectionModal', {
+            repoCheckboxes
+        });
+
+        // Add to page
+        const tempContainer = document.createElement('div');
+        tempContainer.id = 'repoSelectionContainer';
+        tempContainer.innerHTML = selectionModal;
+        document.body.appendChild(tempContainer);
+
+        // Store source for later
+        state.currentSource = source;
+
+    } catch (error) {
+        console.error('Failed to fetch repos:', error);
+    }
+}
+
 // Event handlers
 function attachEventHandlers() {
+    // Track changes to repository fields
+    document.addEventListener('input', (e) => {
+        // Check if the changed element is within a repo row
+        const repoRow = e.target.closest('tr[data-repo-id]');
+        if (repoRow && (
+            e.target.classList.contains('repo-local-path') ||
+            e.target.classList.contains('repo-branch')
+        )) {
+            // Enable the save button for this row
+            const saveBtn = repoRow.querySelector('.save-repo');
+            if (saveBtn) {
+                saveBtn.disabled = false;
+            }
+        }
+    });
+
+    // Track changes to checkboxes
+    document.addEventListener('change', (e) => {
+        const repoRow = e.target.closest('tr[data-repo-id]');
+        if (repoRow && e.target.classList.contains('repo-auto-pr')) {
+            // Enable the save button for this row
+            const saveBtn = repoRow.querySelector('.save-repo');
+            if (saveBtn) {
+                saveBtn.disabled = false;
+            }
+        }
+    });
+
     // Settings button
     document.addEventListener('click', async (e) => {
         // Open settings
@@ -282,14 +390,19 @@ function attachEventHandlers() {
 
         // Save repo
         if (e.target.classList.contains('save-repo')) {
-            const repoId = e.target.dataset.repoId;
-            const row = e.target.closest('tr');
+            const saveBtn = e.target;
+            const repoId = saveBtn.dataset.repoId;
+            const row = saveBtn.closest('tr');
             const localPath = row.querySelector('.repo-local-path').value;
             const branch = row.querySelector('.repo-branch').value;
             const autoPr = row.querySelector('.repo-auto-pr').checked;
 
             await API.saveRepo(repoId, localPath, branch, autoPr);
             showToast('Repository saved successfully', 'success');
+
+            // Disable the save button after successful save
+            saveBtn.disabled = true;
+
             await loadSettings();
             updateSettingsModal();
         }
@@ -308,7 +421,7 @@ function attachEventHandlers() {
         // Fetch repos
         if (e.target.classList.contains('fetch-repos')) {
             const source = e.target.dataset.source;
-            showToast(`Fetching ${source} repositories will be implemented in Prompt 4/5`, 'info');
+            fetchAndShowRepos(source);
         }
 
         // Test connection
@@ -335,6 +448,48 @@ function attachEventHandlers() {
                 await loadSettings();
                 updateSettingsModal();
             }
+        }
+
+        // Repo selection modal handlers
+        if (e.target.id === 'closeRepoSelection' || e.target.id === 'cancelRepoSelection' || e.target.id === 'repoSelectionOverlay') {
+            if (e.target.id === 'repoSelectionOverlay' && e.target !== document.getElementById('repoSelectionOverlay')) {
+                return;
+            }
+            const container = document.getElementById('repoSelectionContainer');
+            if (container) container.remove();
+        }
+
+        // Add selected repos
+        if (e.target.id === 'addSelectedRepos') {
+            const checkboxes = document.querySelectorAll('#repoSelectionContainer input[type="checkbox"]:checked');
+            if (checkboxes.length === 0) {
+                showToast('Please select at least one repository', 'warning');
+                return;
+            }
+
+            let addedCount = 0;
+            for (const checkbox of checkboxes) {
+                try {
+                    await API.addRepo(
+                        state.currentSource,
+                        checkbox.value,
+                        checkbox.dataset.name
+                    );
+                    addedCount++;
+                } catch (error) {
+                    console.error(`Failed to add repo ${checkbox.dataset.name}:`, error);
+                }
+            }
+
+            if (addedCount > 0) {
+                showToast(`Added ${addedCount} repositor${addedCount === 1 ? 'y' : 'ies'}`, 'success');
+                await loadSettings();
+                updateSettingsModal();
+            }
+
+            // Close selection modal
+            const container = document.getElementById('repoSelectionContainer');
+            if (container) container.remove();
         }
     });
 }

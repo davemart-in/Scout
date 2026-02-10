@@ -200,14 +200,41 @@ try {
                     break;
 
                 case 'fetch_repos':
-                    // Placeholder for now - will be implemented in Prompt 4/5
                     $source = $input['source'] ?? '';
 
-                    echo json_encode([
-                        'status' => 'ok',
-                        'message' => 'fetch_repos will be implemented in Prompt 4/5',
-                        'repos' => []
-                    ]);
+                    if ($source === 'github') {
+                        // Include GitHub library
+                        require_once __DIR__ . '/../lib/github.php';
+
+                        // Get GitHub token from environment
+                        $github_token = get_env_value('GITHUB_TOKEN');
+                        if (empty($github_token)) {
+                            http_response_code(400);
+                            echo json_encode(['error' => 'GitHub token not configured']);
+                            break;
+                        }
+
+                        try {
+                            $repos = github_list_repos($github_token);
+                            echo json_encode([
+                                'status' => 'ok',
+                                'repos' => $repos
+                            ]);
+                        } catch (Exception $e) {
+                            http_response_code(500);
+                            echo json_encode(['error' => 'Failed to fetch GitHub repos: ' . $e->getMessage()]);
+                        }
+                    } elseif ($source === 'linear') {
+                        // Linear will be implemented in Prompt 5
+                        echo json_encode([
+                            'status' => 'ok',
+                            'message' => 'Linear integration will be implemented in Prompt 5',
+                            'repos' => []
+                        ]);
+                    } else {
+                        http_response_code(400);
+                        echo json_encode(['error' => 'Invalid source']);
+                    }
                     break;
 
                 default:

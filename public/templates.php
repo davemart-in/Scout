@@ -119,6 +119,27 @@
     </div>
 </script>
 
+<!-- Template: Repo Selection Modal -->
+<script type="text/html" id="tmpl-repoSelectionModal">
+    <div class="modal-overlay show" id="repoSelectionOverlay">
+        <div class="modal show" id="repoSelectionModal">
+            <div class="modal-header">
+                <h2>Select Repositories to Add</h2>
+                <button class="modal-close" id="closeRepoSelection">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="repo-selection-list">
+                    {{repoCheckboxes}}
+                </div>
+                <div class="form-actions">
+                    <button class="btn btn-primary" id="addSelectedRepos">Add Selected</button>
+                    <button class="btn btn-secondary" id="cancelRepoSelection">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</script>
+
 <!-- Template: Repository Row -->
 <script type="text/html" id="tmpl-repoRow">
     <tr data-repo-id="{{id}}">
@@ -137,7 +158,7 @@
             </label>
         </td>
         <td>
-            <button class="btn btn-small btn-primary save-repo" data-repo-id="{{id}}">Save</button>
+            <button class="btn btn-small btn-primary save-repo" data-repo-id="{{id}}" disabled>Save</button>
             <button class="btn btn-small btn-secondary delete-repo" data-repo-id="{{id}}">Delete</button>
         </td>
     </tr>

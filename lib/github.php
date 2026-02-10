@@ -1,52 +1,199 @@
 <?php
 
 /**
- * GitHub API integration functions
- * This file will be populated in Prompt 4
+ * GitHub API Integration Library
  */
 
 /**
- * Make a GitHub API request
- * @param string $endpoint API endpoint
- * @param string $token GitHub token
- * @param string $method HTTP method
- * @param array|null $data Request data
- * @return array Response data
+ * Make a request to the GitHub API
  */
 function github_request($endpoint, $token, $method = 'GET', $data = null) {
-    // Placeholder - will be implemented in Prompt 4
-    return [];
+    $url = 'https://api.github.com' . $endpoint;
+
+    $headers = [
+        'Authorization: Bearer ' . $token,
+        'Accept: application/vnd.github.v3+json',
+        'User-Agent: Scout-App'
+    ];
+
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+    curl_setopt($ch, CURLOPT_HEADER, true); // Include headers in output to get rate limit info
+
+    if ($method !== 'GET') {
+        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
+    }
+
+    if ($data !== null) {
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+        $headers[] = 'Content-Type: application/json';
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+    }
+
+    $response = curl_exec($ch);
+    $header_size = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
+    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    // curl_close() is deprecated in PHP 8.5+ and has no effect since PHP 8.0
+
+    // Split header and body
+    $headers_string = substr($response, 0, $header_size);
+    $body = substr($response, $header_size);
+
+    // Parse headers
+    $headers = [];
+    foreach (explode("\r\n", $headers_string) as $header) {
+        if (strpos($header, ':') !== false) {
+            list($key, $value) = explode(':', $header, 2);
+            $headers[trim($key)] = trim($value);
+        }
+    }
+
+    // Check rate limiting
+    if (isset($headers['X-RateLimit-Remaining'])) {
+        $remaining = intval($headers['X-RateLimit-Remaining']);
+        if ($remaining < 10) {
+            error_log("WARNING: GitHub API rate limit low: $remaining requests remaining");
+        }
+    }
+
+    // Handle errors
+    if ($http_code >= 400) {
+        $error_data = json_decode($body, true);
+        $error_message = $error_data['message'] ?? 'Unknown error';
+        throw new Exception("GitHub API error ($http_code): $error_message");
+    }
+
+    $result = json_decode($body, true);
+
+    // Add Link header for pagination support
+    if (isset($headers['Link'])) {
+        $result['_pagination'] = parse_link_header($headers['Link']);
+    }
+
+    return $result;
 }
 
 /**
- * List user repositories
- * @param string $token GitHub token
- * @return array Repository list
+ * Parse GitHub's Link header for pagination
+ */
+function parse_link_header($link_header) {
+    $links = [];
+    $parts = explode(',', $link_header);
+
+    foreach ($parts as $part) {
+        if (preg_match('/<([^>]+)>;\s*rel="([^"]+)"/', trim($part), $matches)) {
+            $url = $matches[1];
+            $rel = $matches[2];
+
+            // Extract page number from URL
+            if (preg_match('/[?&]page=(\d+)/', $url, $page_matches)) {
+                $links[$rel] = [
+                    'url' => $url,
+                    'page' => intval($page_matches[1])
+                ];
+            }
+        }
+    }
+
+    return $links;
+}
+
+/**
+ * List repositories for the authenticated user
  */
 function github_list_repos($token) {
-    // Placeholder - will be implemented in Prompt 4
-    return [];
+    $repos = [];
+    $page = 1;
+    $per_page = 100;
+
+    do {
+        $response = github_request(
+            "/user/repos?sort=updated&per_page=$per_page&page=$page&type=all",
+            $token
+        );
+
+        foreach ($response as $key => $repo) {
+            if ($key === '_pagination') continue;
+            if (is_array($repo) && isset($repo['full_name'])) {
+                $repos[] = [
+                    'source_id' => $repo['full_name'],
+                    'name' => $repo['full_name']
+                ];
+            }
+        }
+
+        // Check for next page
+        $has_next = isset($response['_pagination']['next']);
+        $page++;
+
+    } while ($has_next && count($repos) < 500); // Reasonable limit
+
+    return $repos;
 }
 
 /**
- * Fetch issues for a repository
- * @param string $token GitHub token
- * @param string $repo_full_name Repository full name (owner/repo)
- * @param int $per_page Items per page
- * @param int $page Page number
- * @return array Issue list
+ * Fetch issues from a GitHub repository
  */
 function github_fetch_issues($token, $repo_full_name, $per_page = 100, $page = 1) {
-    // Placeholder - will be implemented in Prompt 4
-    return [];
+    $all_issues = [];
+    $total_fetched = 0;
+    $max_issues = 500; // Safety limit
+
+    do {
+        $response = github_request(
+            "/repos/$repo_full_name/issues?state=open&per_page=$per_page&page=$page",
+            $token
+        );
+
+        $issues_batch = [];
+        foreach ($response as $key => $issue) {
+            if ($key === '_pagination') continue;
+
+            // Skip pull requests
+            if (is_array($issue) && !isset($issue['pull_request'])) {
+                // Extract labels
+                $labels = [];
+                if (isset($issue['labels']) && is_array($issue['labels'])) {
+                    foreach ($issue['labels'] as $label) {
+                        $labels[] = $label['name'];
+                    }
+                }
+
+                $issues_batch[] = [
+                    'source_id' => strval($issue['number']),
+                    'source_url' => $issue['html_url'],
+                    'title' => $issue['title'],
+                    'description' => $issue['body'] ?? '',
+                    'labels' => $labels,
+                    'priority' => null, // GitHub doesn't have built-in priority
+                    'status' => 'open',
+                    'created_at' => $issue['created_at']
+                ];
+
+                $total_fetched++;
+            }
+        }
+
+        $all_issues = array_merge($all_issues, $issues_batch);
+
+        // Check for next page
+        $has_next = isset($response['_pagination']['next']);
+        $page++;
+
+    } while ($has_next && $total_fetched < $max_issues);
+
+    return $all_issues;
 }
 
 /**
- * Validate GitHub token
- * @param string $token GitHub token
- * @return bool Token is valid
+ * Validate a GitHub token
  */
 function github_validate_token($token) {
-    // Placeholder - will be implemented in Prompt 4
-    return false;
+    try {
+        $response = github_request('/user', $token);
+        return isset($response['login']); // If we get a user login, token is valid
+    } catch (Exception $e) {
+        return false;
+    }
 }

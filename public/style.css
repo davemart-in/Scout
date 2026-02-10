@@ -125,9 +125,14 @@ body {
     border-color: var(--color-primary);
 }
 
-.btn-primary:hover {
+.btn-primary:hover:not(:disabled) {
     background: var(--color-primary-hover);
     border-color: var(--color-primary-hover);
+}
+
+.btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
 }
 
 .btn-secondary {
@@ -136,7 +141,7 @@ body {
     border-color: var(--color-border);
 }
 
-.btn-secondary:hover {
+.btn-secondary:hover:not(:disabled) {
     background: var(--color-bg-secondary);
     border-color: var(--color-text-secondary);
 }
@@ -640,6 +645,36 @@ input::placeholder {
 
 .model-select-row .form-select {
     flex: 1;
+}
+
+/* Repo selection modal */
+.repo-selection-list {
+    max-height: 400px;
+    overflow-y: auto;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-md);
+    margin-bottom: var(--spacing-lg);
+}
+
+.repo-checkbox {
+    display: flex;
+    align-items: center;
+    padding: var(--spacing-sm) 0;
+    cursor: pointer;
+}
+
+.repo-checkbox:hover {
+    background-color: var(--color-bg-secondary);
+}
+
+.repo-checkbox input[type="checkbox"] {
+    margin-right: var(--spacing-md);
+}
+
+.repo-checkbox span {
+    font-size: 14px;
+    color: var(--color-text);
 }
 
 /* Responsive adjustments */
