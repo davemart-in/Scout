@@ -1,10 +1,19 @@
 <!-- Template: Main App -->
 <script type="text/html" id="tmpl-mainApp">
-    <header class="app-header">
-        <div class="header-left">
-            <h1>Scout</h1>
+    <!-- Top Bar -->
+    <header class="top-bar">
+        <div class="top-bar-left">
+            <h1 class="app-name">Scout</h1>
         </div>
-        <div class="header-right">
+        <div class="top-bar-center">
+            <select id="source-selector" class="form-select">
+                {{sourceOptions}}
+            </select>
+            <select id="repo-selector" class="form-select">
+                {{repoOptions}}
+            </select>
+        </div>
+        <div class="top-bar-right">
             <button class="settings-btn" id="openSettings" title="Settings">
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <circle cx="12" cy="12" r="3"></circle>
@@ -14,13 +23,32 @@
         </div>
     </header>
 
-    <main class="app-main">
-        <div class="welcome-message">
-            <h2>Welcome to Scout</h2>
-            <p>Configure your connections and repositories to get started.</p>
-            <button class="btn btn-primary" id="openSettingsFromWelcome">Open Settings</button>
+    <!-- Action Bar -->
+    <div class="action-bar">
+        <div class="action-bar-left">
+            <button class="btn {{fetchButtonClass}}" id="fetch-issues">Fetch Issues</button>
+            <button class="btn btn-secondary" id="refresh-issues" {{refreshDisabled}}>
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+                Refresh
+            </button>
+            <span class="issue-count">{{issueCount}}</span>
         </div>
+        <div class="action-bar-right">
+            <button class="btn {{analyzeButtonClass}}" id="analyze-all" {{analyzeDisabled}}>Analyze All</button>
+            <span class="progress-indicator" style="display: {{progressDisplay}};">{{progressText}}</span>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        {{mainContent}}
     </main>
+
+    <!-- Status Bar -->
+    <footer class="status-bar">
+        <span class="connection-status">{{connectionStatus}}</span>
+        <span class="last-sync">{{lastSync}}</span>
+    </footer>
 </script>
 
 <!-- Template: Settings Modal -->
@@ -137,6 +165,64 @@
                 </div>
             </div>
         </div>
+    </div>
+</script>
+
+<!-- Template: Issues Table -->
+<script type="text/html" id="tmpl-issuesTable">
+    <div class="issues-table-container">
+        <table class="issues-table">
+            <thead>
+                <tr>
+                    <th>Issue</th>
+                    <th>Labels</th>
+                    <th>Priority</th>
+                    <th>Created</th>
+                    <th>Assessment</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{issueRows}}
+            </tbody>
+        </table>
+    </div>
+</script>
+
+<!-- Template: Issue Row -->
+<script type="text/html" id="tmpl-issueRow">
+    <tr class="issue-row">
+        <td class="issue-cell">
+            <div class="issue-header">
+                <a href="{{sourceUrl}}" target="_blank" class="issue-title">{{title}}</a>
+                <span class="issue-id">{{sourceId}}</span>
+            </div>
+            <p class="issue-summary">{{summary}}</p>
+        </td>
+        <td class="labels-cell">
+            {{labels}}
+        </td>
+        <td class="priority-cell">
+            {{priority}}
+        </td>
+        <td class="created-cell">
+            <span title="{{createdFull}}">{{createdRelative}}</span>
+        </td>
+        <td class="assessment-cell">
+            {{assessmentBadge}}
+        </td>
+        <td class="action-cell">
+            {{actionContent}}
+        </td>
+    </tr>
+</script>
+
+<!-- Template: Empty State -->
+<script type="text/html" id="tmpl-emptyState">
+    <div class="empty-state">
+        <h3>{{title}}</h3>
+        <p>{{message}}</p>
+        {{action}}
     </div>
 </script>
 
