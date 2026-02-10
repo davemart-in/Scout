@@ -710,6 +710,16 @@ input::placeholder {
     flex: 0 0 auto;
 }
 
+.top-bar-left {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+}
+
+.app-icon {
+    color: var(--color-primary);
+}
+
 .top-bar-center {
     flex: 1;
     display: flex;

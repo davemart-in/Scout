@@ -4,10 +4,19 @@ const IssuesManager = {
     currentIssues: [],
     lastSync: null,
 
-    async loadIssues(repoId) {
+    async loadIssues(repoId, showNotification = true) {
         if (!repoId) {
             this.renderEmptyState('No repository selected', 'Select a repository from the dropdown above');
             return;
+        }
+
+        // Show loading state only when explicitly refreshing
+        const refreshButton = document.getElementById('refresh-issues');
+        let originalHTML = '';
+        if (showNotification && refreshButton) {
+            originalHTML = refreshButton.innerHTML;
+            refreshButton.innerHTML = '<span class="spinner"></span> Refreshing...';
+            refreshButton.disabled = true;
         }
 
         try {
@@ -17,9 +26,20 @@ const IssuesManager = {
             this.renderIssues();
             this.updateStatusBar();
             this.updateButtonStyles();
+            if (showNotification) {
+                showToast(`Loaded ${this.currentIssues.length} issues`, 'success');
+            }
         } catch (error) {
-            showToast('Failed to load issues', 'error');
+            if (showNotification) {
+                showToast('Failed to load issues', 'error');
+            }
             this.renderEmptyState('Failed to load issues', error.message);
+        } finally {
+            // Restore refresh button
+            if (showNotification && refreshButton && originalHTML) {
+                refreshButton.innerHTML = originalHTML;
+                refreshButton.disabled = this.currentIssues.length === 0;
+            }
         }
     },
 

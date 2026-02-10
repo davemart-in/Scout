@@ -96,8 +96,8 @@ async function loadInitialData() {
             state.currentRepoId = sourceRepos[0].id;
             document.getElementById('repo-selector').value = state.currentRepoId;
 
-            // Load issues for the first repo
-            await IssuesManager.loadIssues(state.currentRepoId);
+            // Load issues for the first repo (silently, no notification)
+            await IssuesManager.loadIssues(state.currentRepoId, false);
         }
     }
 
@@ -179,7 +179,8 @@ function attachMainEventHandlers() {
             state.currentRepoId = e.target.value ? parseInt(e.target.value) : null;
 
             if (state.currentRepoId) {
-                await IssuesManager.loadIssues(state.currentRepoId);
+                // Load issues silently when changing repos
+                await IssuesManager.loadIssues(state.currentRepoId, false);
             } else {
                 IssuesManager.currentIssues = [];
                 IssuesManager.renderEmptyState('Select a repository', 'Choose a repository from the dropdown to view issues');
