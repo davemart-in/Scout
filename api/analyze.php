@@ -6,6 +6,7 @@ header('Content-Type: application/json');
 // Include required libraries
 require_once __DIR__ . '/../lib/db.php';
 require_once __DIR__ . '/../lib/ai.php';
+require_once __DIR__ . '/../lib/utils.php';
 
 try {
     // Route based on request method
@@ -29,13 +30,8 @@ try {
                         break;
                     }
 
-                    // If no model specified, use the assessment model from settings
-                    if (!$model) {
-                        $model = get_setting('assessment_model');
-                        if (!$model) {
-                            $model = 'gpt-5.2'; // Default fallback
-                        }
-                    }
+                    // Get model with fallback
+                    $model = get_assessment_model($model);
 
                     // Fetch up to 5 pending issues from this repo
                     $pendingIssues = db_get_all(
@@ -124,13 +120,8 @@ try {
                         break;
                     }
 
-                    // If no model specified, use the assessment model from settings
-                    if (!$model) {
-                        $model = get_setting('assessment_model');
-                        if (!$model) {
-                            $model = 'gpt-5.2'; // Default fallback
-                        }
-                    }
+                    // Get model with fallback
+                    $model = get_assessment_model($model);
 
                     // Fetch the issue
                     $issue = db_get_one("SELECT * FROM issues WHERE id = ?", [$issueId]);

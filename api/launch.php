@@ -5,61 +5,9 @@ header('Content-Type: application/json');
 
 // Include required libraries
 require_once __DIR__ . '/../lib/db.php';
+require_once __DIR__ . '/../lib/utils.php';
 
-/**
- * Process mustache-style template with placeholders and conditionals
- */
-function process_template($template, $data) {
-    // Simple placeholder replacement
-    foreach ($data as $key => $value) {
-        if (!is_array($value) && !is_bool($value)) {
-            $template = str_replace('{{' . $key . '}}', $value, $template);
-        }
-    }
-
-    // Handle conditional blocks
-    // {{#condition}}content{{/condition}} - show if true
-    // {{^condition}}content{{/condition}} - show if false
-    foreach ($data as $key => $value) {
-        if (is_bool($value) || in_array($key, ['is_github', 'is_linear', 'auto_pr'])) {
-            // Positive condition
-            $pattern = '/\{\{#' . preg_quote($key, '/') . '\}\}(.*?)\{\{\/' . preg_quote($key, '/') . '\}\}/s';
-            if ($value) {
-                $template = preg_replace($pattern, '$1', $template);
-            } else {
-                $template = preg_replace($pattern, '', $template);
-            }
-
-            // Negative condition
-            $pattern = '/\{\{\^' . preg_quote($key, '/') . '\}\}(.*?)\{\{\/' . preg_quote($key, '/') . '\}\}/s';
-            if (!$value) {
-                $template = preg_replace($pattern, '$1', $template);
-            } else {
-                $template = preg_replace($pattern, '', $template);
-            }
-        }
-    }
-
-    return $template;
-}
-
-/**
- * Slugify a string for use in branch names
- */
-function slugify($text) {
-    // Convert to lowercase
-    $text = strtolower($text);
-    // Replace non-alphanumeric characters with hyphens
-    $text = preg_replace('/[^a-z0-9]+/', '-', $text);
-    // Remove leading/trailing hyphens
-    $text = trim($text, '-');
-    // Limit length
-    if (strlen($text) > 50) {
-        $text = substr($text, 0, 50);
-        $text = rtrim($text, '-');
-    }
-    return $text;
-}
+// Template processing and slugify functions moved to lib/utils.php
 
 try {
     // Route based on request method
@@ -113,17 +61,8 @@ try {
                 $model = 'claude-3-5-sonnet-20241022'; // Default fallback
             }
 
-            // Map friendly model names to CLI model names
-            // These are the actual model identifiers that Claude CLI accepts
-            $modelMap = [
-                // Current models (dropping 4.5)
-                'claude-opus-4-6' => 'claude-opus-4-6',              // Opus 4.6
-                'claude-sonnet-4-5' => 'claude-sonnet-4-5-20250929', // Sonnet 4.5
-
-                // Legacy mappings (keep for backward compatibility)
-                'claude-3-5-sonnet-20241022' => 'claude-3-5-sonnet-20241022'
-            ];
-            $cliModel = $modelMap[$model] ?? $model;  // Pass through if not mapped
+            // Get Claude CLI model name
+            $cliModel = get_claude_model_mapping($model);
 
             // Generate unique callback ID
             $callback_id = uniqid('cb_');

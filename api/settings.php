@@ -3,8 +3,9 @@
 // Set JSON response header
 header('Content-Type: application/json');
 
-// Include database library
+// Include required libraries
 require_once __DIR__ . '/../lib/db.php';
+require_once __DIR__ . '/../lib/utils.php';
 
 
 /**
@@ -45,16 +46,8 @@ try {
             $assessment_model = get_setting('assessment_model') ?: 'gpt-5.2';
             $pr_creation_model = get_setting('pr_creation_model') ?: 'claude-opus-4-6';
 
-            // Determine available models based on API keys
-            $available_models = [];
-            if ($token_status['has_openai']) {
-                $available_models[] = ['value' => 'gpt-5.2', 'label' => 'GPT-5.2', 'provider' => 'openai'];
-                $available_models[] = ['value' => 'gpt-4o-mini', 'label' => 'GPT-4o Mini', 'provider' => 'openai'];
-            }
-            if ($token_status['has_anthropic']) {
-                $available_models[] = ['value' => 'claude-sonnet-4-5', 'label' => 'Claude Sonnet 4.5', 'provider' => 'anthropic'];
-                $available_models[] = ['value' => 'claude-opus-4-6', 'label' => 'Claude Opus 4.6', 'provider' => 'anthropic'];
-            }
+            // Get available models based on API keys
+            $available_models = get_available_models();
 
             echo json_encode([
                 'status' => 'ok',
