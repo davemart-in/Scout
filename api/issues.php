@@ -16,10 +16,29 @@ try {
             $repo_id = $_GET['repo_id'] ?? null;
             $page = intval($_GET['page'] ?? 1);
             $per_page = intval($_GET['per_page'] ?? 50);
+            $check_updates = isset($_GET['check_updates']);
+            $last_timestamp = $_GET['last_timestamp'] ?? null;
 
             if (!$repo_id) {
                 http_response_code(400);
                 echo json_encode(['error' => 'repo_id parameter required']);
+                break;
+            }
+
+            // Get last updated timestamp
+            $timestamp_result = db_get_one(
+                "SELECT MAX(updated_at) as last_updated FROM issues WHERE repo_id = ?",
+                [$repo_id]
+            );
+            $last_updated = $timestamp_result ? $timestamp_result['last_updated'] : null;
+
+            // If checking for updates and no changes, return early
+            if ($check_updates && $last_timestamp && $last_timestamp === $last_updated) {
+                echo json_encode([
+                    'status' => 'ok',
+                    'last_updated' => $last_updated,
+                    'has_updates' => false
+                ]);
                 break;
             }
 
@@ -53,7 +72,9 @@ try {
                 'page' => $page,
                 'per_page' => $per_page,
                 'total' => $total,
-                'total_pages' => ceil($total / $per_page)
+                'total_pages' => ceil($total / $per_page),
+                'last_updated' => $last_updated,
+                'has_updates' => true
             ]);
             break;
 
@@ -289,9 +310,121 @@ try {
                     break;
 
                 case 'check_prs':
+                    $repo_id = $input['repo_id'] ?? null;
+
+                    if (!$repo_id) {
+                        http_response_code(400);
+                        echo json_encode(['error' => 'repo_id required']);
+                        break;
+                    }
+
+                    // Get repository details
+                    $repo = db_get_one(
+                        "SELECT * FROM repos WHERE id = ?",
+                        [$repo_id]
+                    );
+
+                    if (!$repo) {
+                        http_response_code(404);
+                        echo json_encode(['error' => 'Repository not found']);
+                        break;
+                    }
+
+                    // Get GitHub token for PR detection (works for both GitHub and Linear issues)
+                    $github_token = get_env_value('GITHUB_TOKEN');
+                    if (empty($github_token)) {
+                        echo json_encode([
+                            'status' => 'ok',
+                            'updated' => 0,
+                            'message' => 'GitHub token not configured'
+                        ]);
+                        break;
+                    }
+
+                    // Include GitHub library
+                    require_once __DIR__ . '/../lib/github.php';
+
+                    // Get all issues with branches but no PR yet
+                    $issues_with_branches = db_get_all(
+                        "SELECT * FROM issues
+                         WHERE repo_id = ?
+                         AND pr_branch IS NOT NULL
+                         AND pr_branch != ''
+                         AND (pr_status = 'in_progress' OR pr_status = 'branch_pushed')",
+                        [$repo_id]
+                    );
+
+                    $updated_count = 0;
+
+                    // For GitHub repos, check for PRs
+                    if ($repo['source'] === 'github' && !empty($repo['source_id'])) {
+                        try {
+                            // Fetch all open PRs for the repository
+                            $prs = github_get_pulls($github_token, $repo['source_id']);
+
+                            // Check each issue's branch against PRs
+                            foreach ($issues_with_branches as $issue) {
+                                $branch_name = $issue['pr_branch'];
+
+                                // Look for a PR from this branch
+                                foreach ($prs as $pr) {
+                                    if (isset($pr['head']['ref']) && $pr['head']['ref'] === $branch_name) {
+                                        // Found a PR for this branch
+                                        $pr_url = $pr['html_url'] ?? '';
+                                        $pr_status = $pr['draft'] ? 'needs_review' : 'pr_created';
+
+                                        // Update issue with PR info
+                                        db_query(
+                                            "UPDATE issues
+                                             SET pr_url = ?, pr_status = ?, updated_at = CURRENT_TIMESTAMP
+                                             WHERE id = ?",
+                                            [$pr_url, $pr_status, $issue['id']]
+                                        );
+                                        $updated_count++;
+                                        break;
+                                    }
+                                }
+                            }
+                        } catch (Exception $e) {
+                            // Log error but don't fail completely
+                            error_log('PR detection error: ' . $e->getMessage());
+                        }
+                    }
+
+                    // For Linear issues, also check the configured GitHub repo
+                    if ($repo['source'] === 'linear' && !empty($repo['github_repo'])) {
+                        try {
+                            // Use the github_repo field for Linear repos
+                            $prs = github_get_pulls($github_token, $repo['github_repo']);
+
+                            foreach ($issues_with_branches as $issue) {
+                                $branch_name = $issue['pr_branch'];
+
+                                foreach ($prs as $pr) {
+                                    if (isset($pr['head']['ref']) && $pr['head']['ref'] === $branch_name) {
+                                        $pr_url = $pr['html_url'] ?? '';
+                                        $pr_status = $pr['draft'] ? 'needs_review' : 'pr_created';
+
+                                        db_query(
+                                            "UPDATE issues
+                                             SET pr_url = ?, pr_status = ?, updated_at = CURRENT_TIMESTAMP
+                                             WHERE id = ?",
+                                            [$pr_url, $pr_status, $issue['id']]
+                                        );
+                                        $updated_count++;
+                                        break;
+                                    }
+                                }
+                            }
+                        } catch (Exception $e) {
+                            error_log('PR detection error for Linear: ' . $e->getMessage());
+                        }
+                    }
+
                     echo json_encode([
                         'status' => 'ok',
-                        'message' => 'check_prs not yet implemented'
+                        'updated' => $updated_count,
+                        'checked' => count($issues_with_branches)
                     ]);
                     break;
 

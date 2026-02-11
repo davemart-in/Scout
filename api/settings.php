@@ -52,9 +52,8 @@ try {
                 $available_models[] = ['value' => 'gpt-4o-mini', 'label' => 'GPT-4o Mini', 'provider' => 'openai'];
             }
             if ($token_status['has_anthropic']) {
-                $available_models[] = ['value' => 'claude-opus-4-6', 'label' => 'Claude Opus 4.6', 'provider' => 'anthropic'];
-                $available_models[] = ['value' => 'claude-opus-4-5', 'label' => 'Claude Opus 4.5', 'provider' => 'anthropic'];
                 $available_models[] = ['value' => 'claude-sonnet-4-5', 'label' => 'Claude Sonnet 4.5', 'provider' => 'anthropic'];
+                $available_models[] = ['value' => 'claude-opus-4-6', 'label' => 'Claude Opus 4.6', 'provider' => 'anthropic'];
             }
 
             echo json_encode([

@@ -514,10 +514,16 @@ input::placeholder,
 }
 
 /* Toast notifications */
-.toast {
+.toast-container {
     position: fixed;
     top: var(--spacing-lg);
     right: var(--spacing-lg);
+    z-index: 2000;
+    pointer-events: none;
+}
+
+.toast {
+    position: relative;
     min-width: 250px;
     max-width: 400px;
     padding: var(--spacing-md) var(--spacing-lg);
@@ -530,7 +536,8 @@ input::placeholder,
     opacity: 0;
     transform: translateX(100%);
     transition: all 300ms ease;
-    z-index: 2000;
+    margin-bottom: 10px;
+    pointer-events: auto;
 }
 
 .toast.show {
@@ -955,11 +962,27 @@ input::placeholder,
     font-weight: 500;
     border-radius: var(--radius-sm);
     text-decoration: none;
+    transition: all 200ms ease;
 }
 
 a.status-badge:hover {
     opacity: 0.8;
     text-decoration: underline;
+}
+
+/* Row highlight animation */
+.issue-row {
+    transition: background-color 300ms ease;
+}
+
+.issue-row.row-highlight {
+    animation: highlightRow 1s ease;
+}
+
+@keyframes highlightRow {
+    0% { background-color: var(--color-bg); }
+    50% { background-color: #e8f5e9; }
+    100% { background-color: var(--color-bg); }
 }
 
 /* Status bar */

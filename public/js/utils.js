@@ -24,21 +24,62 @@ function _tmpl(name, data = {}) {
     return renderTemplate(templates[name], data);
 }
 
-// Show toast notification
+// Toast management
+const toastManager = {
+    container: null,
+    toasts: [],
+
+    init() {
+        if (!this.container) {
+            this.container = document.createElement('div');
+            this.container.className = 'toast-container';
+            document.body.appendChild(this.container);
+        }
+    },
+
+    show(message, type = 'info', duration = 5000) {
+        this.init();
+
+        const toast = document.createElement('div');
+        toast.className = `toast toast-${type}`;
+        toast.textContent = message;
+
+        // Add to container
+        this.container.appendChild(toast);
+        this.toasts.push(toast);
+
+        // Update positions for stacking
+        this.updatePositions();
+
+        // Trigger animation
+        setTimeout(() => toast.classList.add('show'), 10);
+
+        // Auto-dismiss after duration
+        setTimeout(() => {
+            toast.classList.remove('show');
+            setTimeout(() => {
+                const index = this.toasts.indexOf(toast);
+                if (index > -1) {
+                    this.toasts.splice(index, 1);
+                }
+                toast.remove();
+                this.updatePositions();
+            }, 300);
+        }, duration);
+    },
+
+    updatePositions() {
+        let offset = 0;
+        this.toasts.forEach(toast => {
+            toast.style.transform = `translateY(${offset}px)`;
+            offset += toast.offsetHeight + 10;
+        });
+    }
+};
+
+// Legacy function wrapper for compatibility
 function showToast(message, type = 'info') {
-    const toast = document.createElement('div');
-    toast.className = `toast toast-${type}`;
-    toast.textContent = message;
-    document.body.appendChild(toast);
-
-    // Trigger animation
-    setTimeout(() => toast.classList.add('show'), 10);
-
-    // Remove after 5 seconds
-    setTimeout(() => {
-        toast.classList.remove('show');
-        setTimeout(() => toast.remove(), 300);
-    }, 5000);
+    toastManager.show(message, type);
 }
 
 // Calculate relative time

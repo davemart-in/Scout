@@ -195,7 +195,7 @@
 
 <!-- Template: Issue Row -->
 <script type="text/html" id="tmpl-issueRow">
-    <tr class="issue-row">
+    <tr class="issue-row" data-issue-id="{{issueId}}">
         <td class="issue-cell">
             <div class="issue-header">
                 <a href="{{sourceUrl}}" target="_blank" class="issue-title">{{title}}</a>

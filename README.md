@@ -2,49 +2,25 @@
 
 A local PHP application that connects to GitHub/Linear, pulls issues, uses AI to assess them, and launches Claude Code to create PRs.
 
-## Implementation Progress
-
-**Overall: 8/11 prompts completed (73%)**
-
-### Completed ✅
-- [x] **Prompt 1:** Project Scaffolding & Database
-- [x] **Prompt 2:** Environment Variables Setup (.env configuration)
-- [x] **Prompt 3:** Settings Modal & API (model selection, repo management)
-- [x] **Prompt 4:** GitHub Integration (API functions, token validation, issue fetching)
-- [x] **Prompt 5:** Linear Integration (GraphQL API, team/issue fetching)
-- [x] **Prompt 6:** Main UI - Issues Table & Controls
-- [x] **Prompt 7:** AI Analysis System (OpenAI/Anthropic integration, issue assessment)
-- [x] **Prompt 8:** Claude Code Launcher & Callback (terminal launch, progress tracking)
-
-### Not Started ⬜
-- [ ] **Prompt 9:** Polling, Status Updates & PR Detection ← *Next Up*
-- [ ] **Prompt 10:** Styling Polish (Vercel/shadcn aesthetic)
-- [ ] **Prompt 11:** Error Handling, Edge Cases & Documentation
-
-## Current Status
-
-### What's Working Now
-- ✅ Full settings interface with API key configuration
-- ✅ GitHub repository connection and issue fetching
-- ✅ Linear team connection and issue fetching
-- ✅ Issues table with sorting, filtering, and status badges
-- ✅ Model selection for AI analysis and PR creation
-- ✅ Database persistence with SQLite
-- ✅ **AI-powered issue assessment** (OpenAI/Anthropic integration)
-- ✅ **Batch analysis** of issues (automatically categorizes as "PR capable" or "too complex")
-- ✅ **Claude Code integration** (launches in terminal, tracks progress via callbacks)
-- ✅ **PR creation workflow** (creates branches, optional PR creation based on settings)
-
-### What's Next
-- ⬜ Real-time polling and status updates
-- ⬜ Final UI polish and error handling
-
 ## Prerequisites
 
+### Operating System
+- **macOS** (required) - Terminal window integration currently only supports macOS
+  - Linux support is partially implemented but not tested
+  - Windows is not supported
+
+### Software Requirements
 - PHP 8.0+
 - SQLite3 extension
-- Claude Code CLI (will be needed for PR creation)
+- Claude Code CLI (required for PR creation)
 - git
+- Terminal.app (comes with macOS)
+
+### Optional but Recommended
+- GNU coreutils (for better timeout handling)
+  ```bash
+  brew install coreutils
+  ```
 
 ## Setup
 

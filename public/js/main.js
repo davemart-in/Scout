@@ -121,6 +121,8 @@ async function loadInitialData() {
 
             // Load issues for the selected repo (silently, no notification)
             await IssuesManager.loadIssues(state.currentRepoId, false);
+            // Start polling for this repo
+            IssuesManager.startPolling();
         }
     }
 
@@ -216,10 +218,14 @@ function attachMainEventHandlers() {
             if (state.currentRepoId) {
                 // Load issues silently when changing repos
                 await IssuesManager.loadIssues(state.currentRepoId, false);
+                // Start polling for this repo
+                IssuesManager.startPolling();
             } else {
                 IssuesManager.currentIssues = [];
                 IssuesManager.renderEmptyState('Select a repository', 'Choose a repository from the dropdown to view issues');
                 IssuesManager.updateButtonStyles();
+                // Stop polling when no repo selected
+                IssuesManager.stopPolling();
             }
         }
     });

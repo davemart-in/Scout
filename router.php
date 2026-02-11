@@ -14,8 +14,12 @@ if (strpos($path, '/api/') === 0) {
     $endpoint = str_replace('/api/', '', $path);
     $endpoint = trim($endpoint, '/');
 
-    // Map to API files
-    $api_file = __DIR__ . '/api/' . $endpoint . '.php';
+    // Map to API files - check if endpoint already has .php extension
+    if (substr($endpoint, -4) === '.php') {
+        $api_file = __DIR__ . '/api/' . $endpoint;
+    } else {
+        $api_file = __DIR__ . '/api/' . $endpoint . '.php';
+    }
 
     if (file_exists($api_file)) {
         require $api_file;

@@ -16,12 +16,17 @@ ADDITIONAL CONTEXT:
 {{context}}
 {{/has_context}}
 
-Instructions:
-1. Create a new branch named: fix/{{source_id}}-{{slug}}
+Instructions (IMPORTANT - follow these steps in order):
+1. FIRST, create a new branch (NEVER work on main/master/trunk):
+   - Run: git checkout -b fix/{{source_id}}-{{slug}}
+   - Verify you're on the new branch with: git branch --show-current
 2. Understand the codebase relevant to this issue
 3. Implement the fix with clean, well-tested code
-4. Commit your changes with a descriptive commit message referencing the issue
-5. Push the branch to origin
+4. Commit your changes with a descriptive commit message:
+   - Run: git add -A
+   - Run: git commit -m "Fix {{source_id}}: {{title}}"
+5. Push the branch to origin:
+   - Run: git push -u origin fix/{{source_id}}-{{slug}}
 {{#auto_pr}}
 6. Create a pull request with:
    - Title: Fix {{source_id}}: {{title}}

@@ -114,12 +114,16 @@ try {
             }
 
             // Map friendly model names to CLI model names
+            // These are the actual model identifiers that Claude CLI accepts
             $modelMap = [
-                'claude-opus-4-6' => 'claude-3-5-opus-20241022',
-                'claude-opus-4-5' => 'claude-3-5-opus-20241022',
-                'claude-sonnet-4-5' => 'claude-3-5-sonnet-20241022'
+                // Current models (dropping 4.5)
+                'claude-opus-4-6' => 'claude-opus-4-6',              // Opus 4.6
+                'claude-sonnet-4-5' => 'claude-sonnet-4-5-20250929', // Sonnet 4.5
+
+                // Legacy mappings (keep for backward compatibility)
+                'claude-3-5-sonnet-20241022' => 'claude-3-5-sonnet-20241022'
             ];
-            $cliModel = $modelMap[$model] ?? $model;
+            $cliModel = $modelMap[$model] ?? $model;  // Pass through if not mapped
 
             // Generate unique callback ID
             $callback_id = uniqid('cb_');
@@ -207,12 +211,33 @@ try {
             $os = PHP_OS_FAMILY;
 
             if ($os === 'Darwin') {
-                // macOS: Use AppleScript to launch in Terminal
-                $appleScript = sprintf(
-                    'tell application "Terminal" to do script %s',
-                    escapeshellarg($command)
-                );
-                $launchCommand = sprintf('osascript -e %s', escapeshellarg($appleScript));
+                // macOS: Use open command to launch Terminal
+                // This is more reliable than AppleScript from PHP
+                $windowTitle = sprintf('Scout: %s', $issue['source_id']);
+
+                // Create a temporary shell script that Terminal will execute
+                $shellScript = tempnam(sys_get_temp_dir(), 'scout_run_');
+                $shellContent = <<<SHELL
+#!/bin/bash
+# Scout PR Creation for $windowTitle
+echo -e "\033[0;34m========================================\033[0m"
+echo -e "\033[0;34m        Scout: $issue[source_id]        \033[0m"
+echo -e "\033[0;34m========================================\033[0m"
+echo
+exec $command
+SHELL;
+
+                file_put_contents($shellScript, $shellContent);
+                chmod($shellScript, 0755);
+
+                // Use open command to launch Terminal with the script
+                $launchCommand = sprintf('open -a Terminal %s', escapeshellarg($shellScript));
+
+                // Clean up script file after a delay (Terminal needs time to read it)
+                register_shutdown_function(function() use ($shellScript) {
+                    sleep(2);
+                    @unlink($shellScript);
+                });
             } elseif ($os === 'Linux') {
                 // Linux: Try gnome-terminal first
                 $launchCommand = sprintf(
@@ -226,8 +251,14 @@ try {
                 break;
             }
 
-            // Launch the command
-            exec($launchCommand . ' 2>&1', $output, $returnCode);
+            // Launch the command in background to avoid blocking
+            // Use system() for better terminal interaction
+            $fullCommand = $launchCommand . ' > /dev/null 2>&1 &';
+            system($fullCommand, $returnCode);
+
+            // Log the result for debugging
+            error_log("Scout launch command: $fullCommand");
+            error_log("Scout launch return code: $returnCode");
 
             if ($returnCode !== 0 && $os === 'Linux') {
                 // Try xterm as fallback

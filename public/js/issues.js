@@ -3,6 +3,9 @@
 const IssuesManager = {
     currentIssues: [],
     lastSync: null,
+    lastUpdateTimestamp: null,
+    pollingInterval: null,
+    prDetectionInterval: null,
 
     async loadIssues(repoId, showNotification = true) {
         if (!repoId) {
@@ -94,6 +97,7 @@ const IssuesManager = {
         }
 
         return _tmpl('issueRow', {
+            issueId: issue.id,
             sourceUrl: issue.source_url || '#',
             title: issue.title || 'Untitled',
             sourceId: sourceId,
@@ -298,18 +302,35 @@ const IssuesManager = {
             confirmBtn.disabled = true;
             confirmBtn.textContent = 'Launching...';
 
+            // Update UI immediately to show launching status
+            const issueRow = document.querySelector(`tr[data-issue-id="${issueId}"]`);
+            if (issueRow) {
+                const actionCell = issueRow.querySelector('.action-cell');
+                if (actionCell) {
+                    actionCell.innerHTML = '<span class="spinner"></span> <span class="text-muted">Launching...</span>';
+                }
+            }
+
             try {
                 const result = await API.createPR(issueId, context);
                 showToast('Claude Code launched successfully', 'success');
                 closeModal();
 
-                // Update UI immediately to show in-progress status
-                const row = document.querySelector(`[data-issue-id="${issueId}"]`);
-                if (row) {
-                    const actionCell = row.querySelector('.action-cell');
+                // Update UI to show in-progress status
+                if (issueRow) {
+                    const actionCell = issueRow.querySelector('.action-cell');
                     if (actionCell) {
-                        actionCell.innerHTML = '<span class="spinner"></span> In Progress';
+                        actionCell.innerHTML = '<span class="status-badge badge-blue">In Progress...</span>';
                     }
+                    // Add a subtle highlight animation
+                    issueRow.classList.add('row-highlight');
+                    setTimeout(() => issueRow.classList.remove('row-highlight'), 1000);
+                }
+
+                // Update the issue in our local state
+                const issueIndex = this.currentIssues.findIndex(i => parseInt(i.id) === parseInt(issueId));
+                if (issueIndex >= 0) {
+                    this.currentIssues[issueIndex].pr_status = 'in_progress';
                 }
 
                 // Reload issues after a short delay
@@ -318,6 +339,14 @@ const IssuesManager = {
                 showToast(`Failed to launch Claude Code: ${error.message}`, 'error');
                 confirmBtn.disabled = false;
                 confirmBtn.textContent = 'Launch Claude Code';
+
+                // Restore the original button if there was an error
+                if (issueRow) {
+                    const actionCell = issueRow.querySelector('.action-cell');
+                    if (actionCell) {
+                        actionCell.innerHTML = `<button class="btn btn-primary btn-small create-pr" data-issue-id="${issueId}">Create PR</button>`;
+                    }
+                }
             }
         });
 
@@ -353,5 +382,91 @@ const IssuesManager = {
                           state.settings.available_models &&
                           state.settings.available_models.length > 0;
         analyzeButton.disabled = !canAnalyze || this.currentIssues.length === 0;
+    },
+
+    // Start polling for issue updates
+    startPolling() {
+        // Stop any existing polling
+        this.stopPolling();
+
+        // Start polling every 10 seconds
+        this.pollingInterval = setInterval(async () => {
+            if (state.currentRepoId) {
+                await this.checkForUpdates(state.currentRepoId);
+            }
+        }, 10000);
+
+        // Start PR detection every 60 seconds
+        this.prDetectionInterval = setInterval(async () => {
+            if (state.currentRepoId) {
+                await this.checkForPRs(state.currentRepoId);
+            }
+        }, 60000);
+    },
+
+    // Stop polling
+    stopPolling() {
+        if (this.pollingInterval) {
+            clearInterval(this.pollingInterval);
+            this.pollingInterval = null;
+        }
+        if (this.prDetectionInterval) {
+            clearInterval(this.prDetectionInterval);
+            this.prDetectionInterval = null;
+        }
+    },
+
+    // Check for issue updates
+    async checkForUpdates(repoId) {
+        try {
+            const params = new URLSearchParams({
+                repo_id: repoId,
+                check_updates: 1
+            });
+
+            if (this.lastUpdateTimestamp) {
+                params.append('last_timestamp', this.lastUpdateTimestamp);
+            }
+
+            const response = await fetch(`/api/issues.php?${params}`);
+            const result = await response.json();
+
+            // Only update if data has changed
+            if (result.last_updated && result.last_updated !== this.lastUpdateTimestamp) {
+                this.lastUpdateTimestamp = result.last_updated;
+                this.currentIssues = result.issues || [];
+                this.renderIssues();
+                this.updateStatusBar();
+                this.updateButtonStyles();
+            }
+        } catch (error) {
+            console.error('Failed to check for updates:', error);
+        }
+    },
+
+    // Check for PRs on GitHub
+    async checkForPRs(repoId) {
+        try {
+            const response = await fetch('/api/issues.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    action: 'check_prs',
+                    repo_id: repoId
+                })
+            });
+
+            const result = await response.json();
+
+            // If PRs were detected, reload issues
+            if (result.updated && result.updated > 0) {
+                await this.loadIssues(repoId, false);
+                showToast(`Updated status for ${result.updated} issue${result.updated !== 1 ? 's' : ''}`, 'info');
+            }
+        } catch (error) {
+            console.error('Failed to check for PRs:', error);
+        }
     }
 };
