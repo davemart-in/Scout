@@ -193,36 +193,11 @@ function github_fetch_issues($token, $repo_full_name, $per_page = 100, $page = 1
  * Get pull requests for a repository
  */
 function github_get_pulls($token, $repo_full_name) {
-    $ch = curl_init();
-
-    // GitHub API endpoint for pull requests
-    $api_url = "https://api.github.com/repos/$repo_full_name/pulls?state=open&per_page=100";
-
-    curl_setopt($ch, CURLOPT_URL, $api_url);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, [
-        "Authorization: Bearer $token",
-        "Accept: application/vnd.github.v3+json",
-        "User-Agent: Scout-App"
-    ]);
-
-    $response_text = curl_exec($ch);
-    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-
-    if ($response_text === false) {
-        throw new Exception('GitHub API request failed: ' . curl_error($ch));
-    }
-
-    if ($http_code !== 200) {
-        throw new Exception("GitHub API returned status $http_code: $response_text");
-    }
-
-    $prs = json_decode($response_text, true);
-    if (json_last_error() !== JSON_ERROR_NONE) {
-        throw new Exception('Failed to parse GitHub API response');
-    }
-
-    return $prs;
+    // Use the existing github_request function
+    return github_request(
+        "/repos/$repo_full_name/pulls?state=open&per_page=100",
+        $token
+    );
 }
 
 /**

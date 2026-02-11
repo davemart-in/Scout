@@ -148,6 +148,93 @@ function get_claude_model_mapping($model) {
 }
 
 /**
+ * Get OpenAI API model mapping
+ */
+function get_openai_model_mapping($model) {
+    $modelMap = [
+        'GPT-5.2' => 'gpt-5.2',
+        'GPT-4o-mini' => 'gpt-4o-mini',
+        'gpt-5.2' => 'gpt-5.2',
+        'gpt-4o-mini' => 'gpt-4o-mini'
+    ];
+    return $modelMap[$model] ?? $model;
+}
+
+/**
+ * Get Anthropic API model mapping
+ */
+function get_anthropic_model_mapping($model) {
+    // Updated model mappings for Anthropic API
+    $modelMap = [
+        'Claude Sonnet 4.5' => 'claude-3-5-sonnet-20241022',
+        'Claude Opus 4.6' => 'claude-3-5-opus-20241022',
+        'claude-sonnet-4-5' => 'claude-3-5-sonnet-20241022',
+        'claude-opus-4-6' => 'claude-3-5-opus-20241022'
+    ];
+    return $modelMap[$model] ?? $model;
+}
+
+/**
+ * Format issue labels as string
+ */
+function format_labels($labels) {
+    if (empty($labels)) {
+        return '';
+    }
+
+    if (is_string($labels)) {
+        $labelsArray = json_decode($labels, true);
+        if (is_array($labelsArray)) {
+            return implode(', ', $labelsArray);
+        }
+        return $labels;
+    }
+
+    if (is_array($labels)) {
+        return implode(', ', $labels);
+    }
+
+    return '';
+}
+
+/**
+ * Make an API call with retry on JSON parsing failure
+ */
+function call_ai_with_retry($model, $prompt, $retryPrompt = null) {
+    // Determine which API to use
+    $isOpenAI = strpos($model, 'gpt') === 0;
+    $apiKey = $isOpenAI
+        ? get_env_value('OPENAI_KEY')
+        : get_env_value('ANTHROPIC_KEY');
+
+    if (!$apiKey) {
+        $provider = $isOpenAI ? 'OpenAI' : 'Anthropic';
+        throw new Exception("$provider API key not configured");
+    }
+
+    // Make first attempt
+    $response = $isOpenAI
+        ? openai_chat($prompt, $model, $apiKey)
+        : anthropic_chat($prompt, $model, $apiKey);
+
+    // Try to parse JSON
+    $result = json_decode($response, true);
+    if (json_last_error() !== JSON_ERROR_NONE && $retryPrompt) {
+        // Retry with reminder prompt
+        $response = $isOpenAI
+            ? openai_chat($retryPrompt, $model, $apiKey)
+            : anthropic_chat($retryPrompt, $model, $apiKey);
+
+        $result = json_decode($response, true);
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            throw new Exception('Failed to parse AI response as JSON: ' . $response);
+        }
+    }
+
+    return $result;
+}
+
+/**
  * Get available AI models based on configured API keys
  */
 function get_available_models() {

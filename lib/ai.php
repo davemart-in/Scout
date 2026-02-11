@@ -5,6 +5,7 @@
  */
 
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/utils.php';
 
 /**
  * Analyze an issue using AI
@@ -22,61 +23,12 @@ function ai_analyze_issue($issue, $model) {
     // Replace placeholders with issue data
     $prompt = str_replace('{{title}}', $issue['title'] ?? '', $template);
     $prompt = str_replace('{{description}}', $issue['description'] ?? '', $prompt);
-
-    // Format labels as comma-separated string
-    $labels = '';
-    if (!empty($issue['labels'])) {
-        if (is_string($issue['labels'])) {
-            $labelsArray = json_decode($issue['labels'], true);
-            if (is_array($labelsArray)) {
-                $labels = implode(', ', $labelsArray);
-            } else {
-                $labels = $issue['labels'];
-            }
-        } else if (is_array($issue['labels'])) {
-            $labels = implode(', ', $issue['labels']);
-        }
-    }
-    $prompt = str_replace('{{labels}}', $labels, $prompt);
+    $prompt = str_replace('{{labels}}', format_labels($issue['labels']), $prompt);
     $prompt = str_replace('{{priority}}', $issue['priority'] ?? 'None', $prompt);
 
-    // Route to the appropriate API based on model name
-    $response = '';
-    if (strpos($model, 'gpt') === 0) {
-        // OpenAI model
-        $apiKey = get_env_value('OPENAI_KEY');
-        if (!$apiKey) {
-            throw new Exception('OpenAI API key not configured');
-        }
-        $response = openai_chat($prompt, $model, $apiKey);
-    } else if (strpos($model, 'claude') === 0) {
-        // Anthropic model
-        $apiKey = get_env_value('ANTHROPIC_KEY');
-        if (!$apiKey) {
-            throw new Exception('Anthropic API key not configured');
-        }
-        $response = anthropic_chat($prompt, $model, $apiKey);
-    } else {
-        throw new Exception('Unknown model type: ' . $model);
-    }
-
-    // Parse JSON response
-    $result = json_decode($response, true);
-    if (json_last_error() !== JSON_ERROR_NONE) {
-        // If JSON parsing fails, retry with a reminder
-        $retryPrompt = $prompt . "\n\nRemember: respond with ONLY valid JSON, no markdown formatting.";
-
-        if (strpos($model, 'gpt') === 0) {
-            $response = openai_chat($retryPrompt, $model, get_env_value('OPENAI_KEY'));
-        } else {
-            $response = anthropic_chat($retryPrompt, $model, get_env_value('ANTHROPIC_KEY'));
-        }
-
-        $result = json_decode($response, true);
-        if (json_last_error() !== JSON_ERROR_NONE) {
-            throw new Exception('Failed to parse AI response as JSON: ' . $response);
-        }
-    }
+    // Make API call with retry
+    $retryPrompt = $prompt . "\n\nRemember: respond with ONLY valid JSON, no markdown formatting.";
+    $result = call_ai_with_retry($model, $prompt, $retryPrompt);
 
     // Validate required fields
     if (!isset($result['assessment']) || !isset($result['summary'])) {
@@ -102,15 +54,8 @@ function ai_analyze_issue($issue, $model) {
  * @return string Response content
  */
 function openai_chat($prompt, $model, $api_key) {
-    // Map friendly model names to API model names
-    $modelMap = [
-        'GPT-5.2' => 'gpt-5.2',
-        'GPT-4o-mini' => 'gpt-4o-mini',
-        'gpt-5.2' => 'gpt-5.2',
-        'gpt-4o-mini' => 'gpt-4o-mini'
-    ];
-
-    $apiModel = $modelMap[$model] ?? $model;
+    // Get API model name
+    $apiModel = get_openai_model_mapping($model);
 
     // Prepare request
     $url = 'https://api.openai.com/v1/chat/completions';
@@ -171,17 +116,8 @@ function openai_chat($prompt, $model, $api_key) {
  * @return string Response content
  */
 function anthropic_chat($prompt, $model, $api_key) {
-    // Map friendly model names to API model names
-    $modelMap = [
-        'Claude Sonnet 4.5' => 'claude-3-5-sonnet-20241022',
-        'Claude Opus 4.5' => 'claude-3-5-opus-20241022',
-        'Claude Opus 4.6' => 'claude-3-5-opus-20241022',
-        'claude-sonnet-4-5' => 'claude-3-5-sonnet-20241022',
-        'claude-opus-4-5' => 'claude-3-5-opus-20241022',
-        'claude-opus-4-6' => 'claude-3-5-opus-20241022'
-    ];
-
-    $apiModel = $modelMap[$model] ?? $model;
+    // Get API model name
+    $apiModel = get_anthropic_model_mapping($model);
 
     // Prepare request
     $url = 'https://api.anthropic.com/v1/messages';
