@@ -1,208 +1,82 @@
-// API functions for Scout
+// API functions for Scout - using common utilities
 
 const API = {
     async getSettings() {
-        try {
-            const response = await fetch('/api/settings');
-            const data = await response.json();
-            if (data.status === 'ok') {
-                return data;
-            }
-            throw new Error(data.error || 'Failed to load settings');
-        } catch (error) {
-            console.error('Failed to load settings:', error);
-            throw error;
-        }
+        return apiGet('/api/settings');
     },
 
     async fetchIssues(repoId) {
-        try {
-            const response = await fetch(`/api/issues?repo_id=${repoId}`);
-            const data = await response.json();
-            if (data.status === 'ok') {
-                return data;
-            }
-            throw new Error(data.error || 'Failed to fetch issues');
-        } catch (error) {
-            console.error('Failed to fetch issues:', error);
-            throw error;
-        }
+        return apiGet('/api/issues', { repo_id: repoId });
+    },
+
+    async checkForUpdates(repoId, lastTimestamp) {
+        return apiGet('/api/issues', {
+            repo_id: repoId,
+            check_updates: 1,
+            last_timestamp: lastTimestamp
+        });
     },
 
     async syncIssues(repoId) {
-        try {
-            const response = await fetch('/api/issues', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    action: 'fetch_issues',
-                    repo_id: repoId
-                })
-            });
-            const data = await response.json();
-            if (data.status === 'ok') {
-                return data;
-            }
-            throw new Error(data.error || 'Failed to sync issues');
-        } catch (error) {
-            console.error('Failed to sync issues:', error);
-            throw error;
-        }
+        return apiPost('/api/issues', {
+            action: 'fetch_issues',
+            repo_id: repoId
+        });
+    },
+
+    async checkPRs(repoId) {
+        return apiPost('/api/issues', {
+            action: 'check_prs',
+            repo_id: repoId
+        });
     },
 
     async analyzeIssues(repoId) {
-        try {
-            const response = await fetch('/api/analyze', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    action: 'analyze_batch',
-                    repo_id: repoId
-                })
-            });
-            const data = await response.json();
-            if (data.status === 'ok') {
-                return data;
-            }
-            throw new Error(data.error || 'Failed to analyze issues');
-        } catch (error) {
-            console.error('Failed to analyze issues:', error);
-            throw error;
-        }
+        return apiPost('/api/analyze', {
+            action: 'analyze_batch',
+            repo_id: repoId
+        });
     },
 
     async createPR(issueId, context = '') {
-        try {
-            const response = await fetch('/api/launch', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    issue_id: issueId,
-                    context: context
-                })
-            });
-            const data = await response.json();
-            if (data.status === 'launched') {
-                return data;
-            }
-            throw new Error(data.error || 'Failed to create PR');
-        } catch (error) {
-            console.error('Failed to create PR:', error);
-            throw error;
-        }
+        return apiPost('/api/launch', {
+            issue_id: issueId,
+            context: context
+        });
     },
 
     async saveModelPreferences(assessmentModel, prCreationModel) {
-        try {
-            const response = await fetch('/api/settings', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    action: 'save_model_preferences',
-                    assessment_model: assessmentModel,
-                    pr_creation_model: prCreationModel
-                })
-            });
-            const data = await response.json();
-            if (data.status === 'ok') {
-                return data;
-            }
-            throw new Error(data.error || 'Failed to save model preferences');
-        } catch (error) {
-            console.error('Failed to save model preferences:', error);
-            throw error;
-        }
+        return settingsApi('save_model_preferences', {
+            assessment_model: assessmentModel,
+            pr_creation_model: prCreationModel
+        });
     },
 
     async saveRepo(id, localPath, defaultBranch, autoCreatePr) {
-        try {
-            const response = await fetch('/api/settings', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    action: 'save_repo',
-                    id: id,
-                    local_path: localPath,
-                    default_branch: defaultBranch,
-                    auto_create_pr: autoCreatePr
-                })
-            });
-            const data = await response.json();
-            if (data.status === 'ok') {
-                return data;
-            }
-            throw new Error(data.error || 'Failed to save repository');
-        } catch (error) {
-            console.error('Failed to save repository:', error);
-            throw error;
-        }
+        return settingsApi('save_repo', {
+            id: id,
+            local_path: localPath,
+            default_branch: defaultBranch,
+            auto_create_pr: autoCreatePr
+        });
     },
 
     async deleteRepo(id) {
-        try {
-            const response = await fetch('/api/settings', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    action: 'delete_repo',
-                    id: id
-                })
-            });
-            const data = await response.json();
-            if (data.status === 'ok') {
-                return data;
-            }
-            throw new Error(data.error || 'Failed to delete repository');
-        } catch (error) {
-            console.error('Failed to delete repository:', error);
-            throw error;
-        }
+        return settingsApi('delete_repo', { id: id });
     },
 
     async fetchRepos(source) {
-        try {
-            const response = await fetch('/api/settings', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    action: 'fetch_repos',
-                    source: source
-                })
-            });
-            const data = await response.json();
-            if (data.status === 'ok') {
-                return data;
-            }
-            throw new Error(data.error || 'Failed to fetch repositories');
-        } catch (error) {
-            console.error('Failed to fetch repositories:', error);
-            throw error;
-        }
+        return settingsApi('fetch_repos', { source: source });
     },
 
     async addRepo(source, sourceId, name) {
-        try {
-            const response = await fetch('/api/settings', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    action: 'add_repo',
-                    source: source,
-                    source_id: sourceId,
-                    name: name,
-                    local_path: '',
-                    default_branch: 'main',
-                    auto_create_pr: 0
-                })
-            });
-            const data = await response.json();
-            if (data.status === 'ok') {
-                return data;
-            }
-            throw new Error(data.error || 'Failed to add repository');
-        } catch (error) {
-            console.error('Failed to add repository:', error);
-            throw error;
-        }
+        return settingsApi('add_repo', {
+            source: source,
+            source_id: sourceId,
+            name: name,
+            local_path: '',
+            default_branch: 'main',
+            auto_create_pr: 0
+        });
     }
 };

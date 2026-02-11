@@ -12,8 +12,8 @@
     <?php include 'templates.php'; ?>
 
     <!-- JavaScript files -->
+    <script src="js/common.js"></script>
     <script src="js/api.js"></script>
-    <script src="js/utils.js"></script>
     <script src="js/issues.js"></script>
     <script src="js/settings.js"></script>
     <script src="js/main.js"></script>
