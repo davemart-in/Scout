@@ -256,14 +256,31 @@ try {
 
                     $updated_count = 0;
 
-                    // For GitHub repos, check for PRs
-                    if ($repo['source'] === 'github' && !empty($repo['source_id'])) {
-                        $updated_count += check_and_update_prs($github_token, $repo['source_id'], $issues_with_branches);
+                    // Determine the GitHub repository to check
+                    $github_repo_to_check = null;
+
+                    if ($repo['source'] === 'github') {
+                        // For GitHub repos, use the source_id directly
+                        $github_repo_to_check = $repo['source_id'];
+                    } else if ($repo['source'] === 'linear') {
+                        // For Linear repos, detect GitHub repo from local git repo
+                        if (!empty($repo['local_path']) && is_dir($repo['local_path'] . '/.git')) {
+                            // Try to get GitHub repo from git remote
+                            $cmd = sprintf(
+                                "cd %s && git remote get-url origin 2>/dev/null | sed -E 's/.*github.com[:/](.+)(\\.git)?$/\\1/' | sed 's/\\.git$//'",
+                                escapeshellarg($repo['local_path'])
+                            );
+                            $github_repo_from_git = trim(shell_exec($cmd));
+
+                            if (!empty($github_repo_from_git) && strpos($github_repo_from_git, '/') !== false) {
+                                $github_repo_to_check = $github_repo_from_git;
+                            }
+                        }
                     }
 
-                    // For Linear issues, also check the configured GitHub repo
-                    if ($repo['source'] === 'linear' && !empty($repo['github_repo'])) {
-                        $updated_count += check_and_update_prs($github_token, $repo['github_repo'], $issues_with_branches);
+                    // Check for PRs if we have a GitHub repo
+                    if (!empty($github_repo_to_check)) {
+                        $updated_count += check_and_update_prs($github_token, $github_repo_to_check, $issues_with_branches);
                     }
 
                     echo json_encode([
