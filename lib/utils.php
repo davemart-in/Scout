@@ -142,7 +142,8 @@ function get_claude_model_mapping($model) {
     $modelMap = [
         'claude-opus-4-6' => 'claude-opus-4-6',
         'claude-sonnet-4-5' => 'claude-sonnet-4-5-20250929',
-        'claude-3-5-sonnet-20241022' => 'claude-3-5-sonnet-20241022'
+        'claude-3-5-sonnet-20241022' => 'claude-sonnet-4-5-20250929',
+        'claude-3-5-opus-20241022' => 'claude-opus-4-6'
     ];
     return $modelMap[$model] ?? $model;  // Pass through if not mapped
 }
@@ -164,12 +165,15 @@ function get_openai_model_mapping($model) {
  * Get Anthropic API model mapping
  */
 function get_anthropic_model_mapping($model) {
-    // Updated model mappings for Anthropic API
+    // Canonical Anthropic model IDs used across the app.
+    // Keep legacy aliases to avoid breaking older saved settings.
     $modelMap = [
-        'Claude Sonnet 4.5' => 'claude-3-5-sonnet-20241022',
-        'Claude Opus 4.6' => 'claude-3-5-opus-20241022',
-        'claude-sonnet-4-5' => 'claude-3-5-sonnet-20241022',
-        'claude-opus-4-6' => 'claude-3-5-opus-20241022'
+        'Claude Sonnet 4.5' => 'claude-sonnet-4-5',
+        'Claude Opus 4.6' => 'claude-opus-4-6',
+        'claude-sonnet-4-5' => 'claude-sonnet-4-5',
+        'claude-opus-4-6' => 'claude-opus-4-6',
+        'claude-3-5-sonnet-20241022' => 'claude-sonnet-4-5',
+        'claude-3-5-opus-20241022' => 'claude-opus-4-6'
     ];
     return $modelMap[$model] ?? $model;
 }

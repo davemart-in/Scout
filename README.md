@@ -5,7 +5,8 @@ A local PHP application that connects to GitHub/Linear, pulls issues, uses AI to
 ## Prerequisites
 
 ### Operating System
-- **macOS** (required) - Terminal window integration currently only supports macOS
+- **macOS** (required) 
+  - Terminal window integration currently only supports macOS
   - Linux support is partially implemented but not tested
   - Windows is not supported
 
@@ -41,10 +42,6 @@ A local PHP application that connects to GitHub/Linear, pulls issues, uses AI to
    - Click "Generate new token (classic)"
    - Required scopes:
      - `repo` (Full control of private repositories) - for accessing issues and creating PRs
-   - Optional scopes (if needed):
-     - `workflow` - if you need to modify GitHub Actions workflows
-     - `write:packages` - if working with GitHub Packages
-     - `admin:org` → `read:org` - if you need to list organization repositories
 
 3. Run the startup script:
    ```bash

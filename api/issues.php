@@ -7,6 +7,86 @@ header('Content-Type: application/json');
 require_once __DIR__ . '/../lib/db.php';
 require_once __DIR__ . '/../lib/utils.php';
 
+/**
+ * Terminate processes associated with a callback ID.
+ * Returns the number of matching processes detected before termination.
+ */
+function terminate_callback_processes($callback_id) {
+    if (empty($callback_id)) {
+        return 0;
+    }
+
+    $escaped = escapeshellarg($callback_id);
+    $count = (int)trim((string)shell_exec("pgrep -f $escaped 2>/dev/null | wc -l | tr -d ' '"));
+
+    // Try graceful termination first, then force kill.
+    shell_exec("pkill -TERM -f $escaped 2>/dev/null");
+    usleep(300000);
+    shell_exec("pkill -KILL -f $escaped 2>/dev/null");
+
+    return $count;
+}
+
+/**
+ * Best-effort worktree cleanup for cancelled runs.
+ */
+function remove_worktree($repo_root_path, $worktree_path) {
+    if (empty($repo_root_path) || empty($worktree_path) || !is_dir($worktree_path)) {
+        return;
+    }
+
+    $repoArg = escapeshellarg($repo_root_path);
+    $worktreeArg = escapeshellarg($worktree_path);
+    shell_exec("git -C $repoArg worktree remove --force $worktreeArg 2>/dev/null");
+}
+
+/**
+ * Get or initialize incremental sync state for a repository.
+ */
+function get_repo_sync_state($repo_id) {
+    $state = db_get_one("SELECT * FROM repo_sync_state WHERE repo_id = ?", [$repo_id]);
+    if (!$state) {
+        db_query(
+            "INSERT INTO repo_sync_state (repo_id, next_page, page_size, has_more, last_fetch_count, updated_at)
+             VALUES (?, 1, 50, 1, 0, CURRENT_TIMESTAMP)",
+            [$repo_id]
+        );
+        $state = db_get_one("SELECT * FROM repo_sync_state WHERE repo_id = ?", [$repo_id]);
+    }
+
+    if (!$state) {
+        return [
+            'repo_id' => $repo_id,
+            'next_page' => 1,
+            'next_cursor' => null,
+            'page_size' => 50,
+            'has_more' => 1,
+            'last_fetch_count' => 0
+        ];
+    }
+
+    return $state;
+}
+
+/**
+ * Persist incremental sync state.
+ */
+function save_repo_sync_state($repo_id, $next_page, $next_cursor, $page_size, $has_more, $last_fetch_count) {
+    db_query(
+        "INSERT INTO repo_sync_state (repo_id, next_page, next_cursor, page_size, has_more, last_fetch_count, last_fetch_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+         ON CONFLICT(repo_id) DO UPDATE SET
+            next_page = excluded.next_page,
+            next_cursor = excluded.next_cursor,
+            page_size = excluded.page_size,
+            has_more = excluded.has_more,
+            last_fetch_count = excluded.last_fetch_count,
+            last_fetch_at = CURRENT_TIMESTAMP,
+            updated_at = CURRENT_TIMESTAMP",
+        [$repo_id, $next_page, $next_cursor, $page_size, $has_more ? 1 : 0, $last_fetch_count]
+    );
+}
+
 try {
     // Route based on request method
     $method = $_SERVER['REQUEST_METHOD'];
@@ -52,6 +132,7 @@ try {
                 [$repo_id]
             );
             $total = $count_result ? $count_result['total'] : 0;
+            $sync_state = get_repo_sync_state($repo_id);
 
             // Get issues
             $issues = db_get_all(
@@ -74,6 +155,8 @@ try {
                 'per_page' => $per_page,
                 'total' => $total,
                 'total_pages' => ceil($total / $per_page),
+                'has_more' => !empty($sync_state['has_more']),
+                'next_page' => intval($sync_state['next_page'] ?? 1),
                 'last_updated' => $last_updated,
                 'has_updates' => true
             ]);
@@ -107,6 +190,24 @@ try {
                         break;
                     }
 
+                    $sync_state = get_repo_sync_state($repo_id);
+                    $page_size = intval($sync_state['page_size'] ?? 50);
+                    if ($page_size < 1) {
+                        $page_size = 50;
+                    }
+
+                    if (empty($sync_state['has_more'])) {
+                        echo json_encode([
+                            'status' => 'ok',
+                            'new' => 0,
+                            'updated' => 0,
+                            'total' => 0,
+                            'has_more' => false,
+                            'message' => 'No more issues to fetch'
+                        ]);
+                        break;
+                    }
+
                     // Fetch issues based on source
                     if ($repo['source'] === 'github') {
                         // Include GitHub library
@@ -121,8 +222,15 @@ try {
                         }
 
                         try {
-                            // Fetch issues from GitHub
-                            $issues = github_fetch_issues($github_token, $repo['source_id']);
+                            $next_page = intval($sync_state['next_page'] ?? 1);
+                            if ($next_page < 1) {
+                                $next_page = 1;
+                            }
+
+                            // Fetch one page from GitHub.
+                            $fetch_result = github_fetch_issues_page($github_token, $repo['source_id'], $page_size, $next_page);
+                            $issues = $fetch_result['issues'] ?? [];
+                            $has_next = !empty($fetch_result['has_next']);
 
                             $new_count = 0;
                             $updated_count = 0;
@@ -143,16 +251,24 @@ try {
                             // Commit transaction
                             $db->exec('COMMIT');
 
+                            $next_page_to_store = $has_next ? ($next_page + 1) : $next_page;
+                            save_repo_sync_state($repo_id, $next_page_to_store, null, $page_size, $has_next, count($issues));
+
                             echo json_encode([
                                 'status' => 'ok',
                                 'new' => $new_count,
                                 'updated' => $updated_count,
-                                'total' => count($issues)
+                                'total' => count($issues),
+                                'fetched_count' => count($issues),
+                                'has_more' => $has_next,
+                                'next_page' => $next_page_to_store
                             ]);
 
                         } catch (Exception $e) {
                             // Rollback on error
-                            $db->exec('ROLLBACK');
+                            if (isset($db)) {
+                                $db->exec('ROLLBACK');
+                            }
                             http_response_code(500);
                             echo json_encode(['error' => 'Failed to fetch issues: ' . $e->getMessage()]);
                         }
@@ -169,8 +285,17 @@ try {
                         }
 
                         try {
-                            // Fetch issues from Linear
-                            $issues = linear_fetch_issues($linear_token, $repo['source_id']);
+                            $next_page = intval($sync_state['next_page'] ?? 1);
+                            if ($next_page < 1) {
+                                $next_page = 1;
+                            }
+                            $cursor = $sync_state['next_cursor'] ?? null;
+
+                            // Fetch one page from Linear.
+                            $fetch_result = linear_fetch_issues_page($linear_token, $repo['source_id'], $page_size, $cursor);
+                            $issues = $fetch_result['issues'] ?? [];
+                            $has_next = !empty($fetch_result['has_next']);
+                            $next_cursor = $fetch_result['end_cursor'] ?? null;
 
                             $new_count = 0;
                             $updated_count = 0;
@@ -191,11 +316,17 @@ try {
                             // Commit transaction
                             $db->exec('COMMIT');
 
+                            $next_page_to_store = $has_next ? ($next_page + 1) : $next_page;
+                            save_repo_sync_state($repo_id, $next_page_to_store, $next_cursor, $page_size, $has_next, count($issues));
+
                             echo json_encode([
                                 'status' => 'ok',
                                 'new' => $new_count,
                                 'updated' => $updated_count,
-                                'total' => count($issues)
+                                'total' => count($issues),
+                                'fetched_count' => count($issues),
+                                'has_more' => $has_next,
+                                'next_page' => $next_page_to_store
                             ]);
 
                         } catch (Exception $e) {
@@ -287,6 +418,65 @@ try {
                         'status' => 'ok',
                         'updated' => $updated_count,
                         'checked' => count($issues_with_branches)
+                    ]);
+                    break;
+
+                case 'cancel_pr':
+                    $issue_id = $input['issue_id'] ?? null;
+
+                    if (!$issue_id) {
+                        http_response_code(400);
+                        echo json_encode(['error' => 'issue_id required']);
+                        break;
+                    }
+
+                    $issue = db_get_one("SELECT id, pr_status FROM issues WHERE id = ?", [$issue_id]);
+                    if (!$issue) {
+                        http_response_code(404);
+                        echo json_encode(['error' => 'Issue not found']);
+                        break;
+                    }
+
+                    // Gather pending callbacks before marking them cancelled.
+                    $pending_callbacks = db_get_all(
+                        "SELECT callback_id, worktree_path, repo_root_path
+                         FROM callbacks
+                         WHERE issue_id = ?
+                         AND status = 'pending'",
+                        [$issue_id]
+                    );
+
+                    $terminated_processes = 0;
+                    foreach ($pending_callbacks as $callback) {
+                        $terminated_processes += terminate_callback_processes($callback['callback_id'] ?? '');
+                        remove_worktree($callback['repo_root_path'] ?? '', $callback['worktree_path'] ?? '');
+                    }
+
+                    // Mark callbacks as cancelled so late callbacks cannot overwrite state.
+                    db_query(
+                        "UPDATE callbacks
+                         SET status = 'cancelled',
+                             completed_at = CURRENT_TIMESTAMP
+                         WHERE issue_id = ?
+                         AND status = 'pending'",
+                        [$issue_id]
+                    );
+
+                    // Reset issue PR state.
+                    db_query(
+                        "UPDATE issues
+                         SET pr_status = 'none',
+                             pr_url = NULL,
+                             pr_branch = NULL,
+                             updated_at = CURRENT_TIMESTAMP
+                         WHERE id = ?",
+                        [$issue_id]
+                    );
+
+                    echo json_encode([
+                        'status' => 'ok',
+                        'message' => 'Run cancelled',
+                        'terminated_processes' => $terminated_processes
                     ]);
                     break;
 

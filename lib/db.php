@@ -70,6 +70,7 @@ function create_tables() {
             name TEXT NOT NULL,
             local_path TEXT,
             default_branch TEXT DEFAULT 'main',
+            default_mode TEXT DEFAULT 'plan',
             auto_create_pr INTEGER DEFAULT 0,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
@@ -113,11 +114,50 @@ function create_tables() {
         )
     ");
 
+    // Per-repo issue intake state for incremental "Fetch 50" behavior.
+    $db->exec("
+        CREATE TABLE IF NOT EXISTS repo_sync_state (
+            repo_id INTEGER PRIMARY KEY REFERENCES repos(id),
+            next_page INTEGER NOT NULL DEFAULT 1,
+            next_cursor TEXT,
+            page_size INTEGER NOT NULL DEFAULT 50,
+            has_more INTEGER NOT NULL DEFAULT 1,
+            last_fetch_count INTEGER NOT NULL DEFAULT 0,
+            last_fetch_at TEXT,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    ");
+
     // Create indexes for better performance
     $db->exec("CREATE INDEX IF NOT EXISTS idx_issues_repo_id ON issues(repo_id)");
     $db->exec("CREATE INDEX IF NOT EXISTS idx_issues_assessment ON issues(assessment)");
     $db->exec("CREATE INDEX IF NOT EXISTS idx_callbacks_issue_id ON callbacks(issue_id)");
     $db->exec("CREATE INDEX IF NOT EXISTS idx_callbacks_callback_id ON callbacks(callback_id)");
+    $db->exec("CREATE INDEX IF NOT EXISTS idx_repo_sync_has_more ON repo_sync_state(has_more)");
+
+    // Ensure callback metadata columns exist for run/worktree lifecycle tracking.
+    db_ensure_column('callbacks', 'worktree_path', 'TEXT');
+    db_ensure_column('callbacks', 'repo_root_path', 'TEXT');
+    db_ensure_column('callbacks', 'branch_name', 'TEXT');
+    db_ensure_column('repos', 'default_mode', "TEXT DEFAULT 'plan'");
+}
+
+/**
+ * Ensure a column exists on a table, adding it if missing.
+ */
+function db_ensure_column($table, $column, $definition) {
+    global $db;
+
+    $stmt = $db->query("PRAGMA table_info($table)");
+    $columns = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
+
+    foreach ($columns as $col) {
+        if (($col['name'] ?? '') === $column) {
+            return;
+        }
+    }
+
+    $db->exec("ALTER TABLE $table ADD COLUMN $column $definition");
 }
 
 /**

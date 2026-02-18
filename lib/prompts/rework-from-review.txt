@@ -1,0 +1,16 @@
+Address the review feedback for this issue and update the existing branch.
+
+Issue context:
+- Source ID: {{source_id}}
+- Title: {{title}}
+- Branch: {{branch_name}}
+
+Instructions:
+1. Confirm you are on {{branch_name}}.
+2. Apply fixes for all review feedback.
+3. Re-run tests/checks relevant to your changes.
+4. Commit updates with a clear message.
+5. Push updates to origin {{branch_name}}.
+
+When complete, output exactly: ISSUE_REWORK_COMPLETE:{{callback_id}}
+If you cannot complete, output exactly: ISSUE_REWORK_FAILED:{{callback_id}}

@@ -190,6 +190,47 @@ function github_fetch_issues($token, $repo_full_name, $per_page = 100, $page = 1
 }
 
 /**
+ * Fetch a single page of issues from a GitHub repository.
+ */
+function github_fetch_issues_page($token, $repo_full_name, $per_page = 50, $page = 1) {
+    $response = github_request(
+        "/search/issues?q=repo:$repo_full_name+type:issue+state:open&per_page=$per_page&page=$page&sort=created&order=desc",
+        $token
+    );
+
+    $items = isset($response['items']) ? $response['items'] : [];
+    $issues = [];
+
+    foreach ($items as $issue) {
+        $labels = [];
+        if (isset($issue['labels']) && is_array($issue['labels'])) {
+            foreach ($issue['labels'] as $label) {
+                $labels[] = $label['name'];
+            }
+        }
+
+        $issues[] = [
+            'source_id' => strval($issue['number']),
+            'source_url' => $issue['html_url'],
+            'title' => $issue['title'],
+            'description' => $issue['body'] ?? '',
+            'labels' => $labels,
+            'priority' => null,
+            'status' => 'open',
+            'created_at' => $issue['created_at']
+        ];
+    }
+
+    $has_next = isset($response['_pagination']['next']);
+
+    return [
+        'issues' => $issues,
+        'has_next' => $has_next,
+        'page' => $page
+    ];
+}
+
+/**
  * Get pull requests for a repository
  */
 function github_get_pulls($token, $repo_full_name) {

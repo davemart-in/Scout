@@ -176,6 +176,12 @@ function attachMainEventHandlers() {
             await IssuesManager.analyzeAll(state.currentRepoId);
         }
 
+        // Issues tabs
+        if (e.target.classList.contains('issues-tab-btn')) {
+            const tab = e.target.dataset.issuesTab;
+            IssuesManager.setTab(tab);
+        }
+
         // Create PR button
         if (e.target.classList.contains('create-pr')) {
             e.preventDefault();
@@ -191,12 +197,33 @@ function attachMainEventHandlers() {
             const issueId = e.target.dataset.issueId;
             await IssuesManager.createPR(parseInt(issueId));
         }
+
+        // Cancel in-progress PR run
+        if (e.target.classList.contains('cancel-pr-link')) {
+            e.preventDefault();
+            e.stopPropagation();
+
+            const issueId = parseInt(e.target.dataset.issueId, 10);
+            if (!issueId) return;
+
+            const confirmed = confirm('Cancel this in-progress run?');
+            if (!confirmed) return;
+
+            try {
+                await API.cancelPR(issueId);
+                showToast('Run canceled', 'success');
+                await IssuesManager.loadIssues(state.currentRepoId, false);
+            } catch (error) {
+                showToast(`Failed to cancel run: ${error.message}`, 'error');
+            }
+        }
     });
 
     // Source selector change
     document.addEventListener('change', async (e) => {
         if (e.target.id === 'source-selector') {
             state.currentSource = e.target.value;
+            IssuesManager.setTab('active');
             // Save to localStorage
             localStorage.setItem('scout_selected_source', e.target.value);
             await updateRepoDropdown();
@@ -208,6 +235,7 @@ function attachMainEventHandlers() {
 
         if (e.target.id === 'repo-selector') {
             state.currentRepoId = e.target.value ? parseInt(e.target.value) : null;
+            IssuesManager.setTab('active');
             // Save to localStorage
             if (state.currentRepoId) {
                 localStorage.setItem('scout_selected_repo', e.target.value);

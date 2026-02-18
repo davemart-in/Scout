@@ -173,28 +173,30 @@ function showToast(message, type = 'info', duration = 5000) {
     toast.className = `toast toast-${type}`;
     toast.textContent = message;
 
-    // Position new toast above existing ones
-    const existingToasts = toastContainer.querySelectorAll('.toast.show');
-    const offset = existingToasts.length * 60; // 60px per toast
-    toast.style.bottom = `${20 + offset}px`;
+    let isRemoving = false;
+    let removeTimer = null;
 
+    function removeToast() {
+        if (isRemoving) return;
+        isRemoving = true;
+        if (removeTimer) {
+            clearTimeout(removeTimer);
+            removeTimer = null;
+        }
+        toast.classList.remove('show');
+        setTimeout(() => {
+            toast.remove();
+        }, 300);
+    }
+
+    toast.addEventListener('click', removeToast);
     toastContainer.appendChild(toast);
 
     // Trigger animation
     setTimeout(() => toast.classList.add('show'), 10);
 
     // Remove after duration
-    setTimeout(() => {
-        toast.classList.remove('show');
-        setTimeout(() => {
-            toast.remove();
-            // Reposition remaining toasts
-            const remaining = toastContainer.querySelectorAll('.toast.show');
-            remaining.forEach((t, i) => {
-                t.style.bottom = `${20 + (i * 60)}px`;
-            });
-        }, 300);
-    }, duration);
+    removeTimer = setTimeout(removeToast, duration);
 
     return toast;
 }
@@ -337,7 +339,7 @@ function createActionContent(issue) {
                 return `<button class="btn btn-primary btn-small create-pr" data-issue-id="${issue.id}" disabled>Create PR</button>`;
             }
         case 'in_progress':
-            return '<span class="status-badge badge-blue">In Progress...</span>';
+            return `<span class="in-progress-actions"><span class="status-badge badge-blue">In Progress...</span> <a href="#" class="cancel-pr-link" data-issue-id="${issue.id}">Cancel</a></span>`;
         case 'branch_pushed':
             return issue.pr_branch
                 ? `<span class="status-badge badge-blue">Branch Pushed</span>`

@@ -30,7 +30,7 @@
     <!-- Action Bar -->
     <div class="action-bar">
         <div class="action-bar-left">
-            <button class="btn {{fetchButtonClass}}" id="fetch-issues">Fetch Issues</button>
+            <button class="btn {{fetchButtonClass}}" id="fetch-issues">Fetch 50 Issues</button>
             <button class="btn btn-secondary" id="refresh-issues" {{refreshDisabled}}>
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
                 Refresh
@@ -86,8 +86,25 @@
                                     <th>Name</th>
                                     <th>Source</th>
                                     <th>Local Path</th>
-                                    <th>Branch</th>
-                                    <th>Auto PR</th>
+                                    <th class="repo-branch-col">Branch</th>
+                                    <th class="repo-default-mode-col">
+                                        <span class="th-label-with-help">
+                                            Default Mode
+                                            <span class="th-help">
+                                                <button type="button" class="th-help-trigger" aria-label="About Default Mode">(?)</button>
+                                                <span class="th-help-popover">Sets Claude's default permission mode for this repo when a run starts: Accept (auto-accept edits), Ask (prompt for approvals), or Plan (planning-only mode).</span>
+                                            </span>
+                                        </span>
+                                    </th>
+                                    <th class="repo-auto-pr-col">
+                                        <span class="th-label-with-help">
+                                            Auto PR
+                                            <span class="th-help">
+                                                <button type="button" class="th-help-trigger" aria-label="About Auto PR">(?)</button>
+                                                <span class="th-help-popover">If enabled, Scout instructs Claude to open a pull request automatically when work completes.</span>
+                                            </span>
+                                        </span>
+                                    </th>
                                     <th>Actions</th>
                                 </tr>
                             </thead>
@@ -127,14 +144,24 @@
             <p class="help-text">Model used to analyze issues and determine if they're suitable for automated PR creation</p>
         </div>
         <div class="form-group">
-            <label for="pr-creation-model">PR Creation Model</label>
+            <label for="pr-creation-model">Code Creation Model</label>
             <div class="model-select-row">
                 <select id="pr-creation-model" class="form-select">
                     {{prCreationOptions}}
                 </select>
                 <button class="btn btn-secondary test-connection" data-model-type="pr-creation">Test connection</button>
             </div>
-            <p class="help-text">Model used by Claude Code to generate the actual pull request</p>
+            <p class="help-text">Model used by Claude Code to implement the fix and push the branch</p>
+        </div>
+        <div class="form-group">
+            <label for="code-review-model">Code Review Model</label>
+            <div class="model-select-row">
+                <select id="code-review-model" class="form-select">
+                    {{codeReviewOptions}}
+                </select>
+                <button class="btn btn-secondary test-connection" data-model-type="code-review">Test connection</button>
+            </div>
+            <p class="help-text">Model used to review generated code before opening a pull request</p>
         </div>
         <div class="form-actions">
             <button class="btn btn-primary" id="save-model-preferences">Save Preferences</button>
@@ -160,9 +187,20 @@
                 <button class="modal-close" id="closeRepoSelection">×</button>
             </div>
             <div class="modal-body">
+                <div class="form-group repo-selection-search-wrap">
+                    <input
+                        type="text"
+                        id="repoSelectionSearch"
+                        class="repo-selection-search"
+                        placeholder="Filter repositories..."
+                    >
+                </div>
                 <div class="repo-selection-list">
                     {{repoCheckboxes}}
                 </div>
+                <p class="help-text repo-selection-empty" id="repoSelectionEmpty" style="display:none;">
+                    No repositories match your search.
+                </p>
                 <div class="form-actions">
                     <button class="btn btn-primary" id="addSelectedRepos">Add Selected</button>
                     <button class="btn btn-secondary" id="cancelRepoSelection">Cancel</button>
@@ -175,6 +213,14 @@
 <!-- Template: Issues Table -->
 <script type="text/html" id="tmpl-issuesTable">
     <div class="issues-table-container">
+        <div class="issues-tabs">
+            <button class="issues-tab-btn {{activeTabClass}}" data-issues-tab="active">
+                Active ({{activeCount}})
+            </button>
+            <button class="issues-tab-btn {{tooComplexTabClass}}" data-issues-tab="too_complex">
+                Too Complex ({{tooComplexCount}})
+            </button>
+        </div>
         <table class="issues-table">
             <thead>
                 <tr>
@@ -238,10 +284,17 @@
         <td>
             <input type="text" class="repo-local-path" value="{{localPath}}" placeholder="/path/to/repo">
         </td>
-        <td>
+        <td class="repo-branch-col">
             <input type="text" class="repo-branch" value="{{defaultBranch}}" placeholder="main">
         </td>
-        <td>
+        <td class="repo-default-mode-col">
+            <select class="repo-default-mode">
+                <option value="accept" {{modeAcceptSelected}}>Accept</option>
+                <option value="ask" {{modeAskSelected}}>Ask</option>
+                <option value="plan" {{modePlanSelected}}>Plan</option>
+            </select>
+        </td>
+        <td class="repo-auto-pr-col">
             <label class="toggle">
                 <input type="checkbox" class="repo-auto-pr" {{autoCreatePr}}>
                 <span class="toggle-slider"></span>

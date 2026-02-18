@@ -5,15 +5,16 @@ const API = {
         return apiGet('/api/settings');
     },
 
-    async fetchIssues(repoId) {
-        return apiGet('/api/issues', { repo_id: repoId });
+    async fetchIssues(repoId, perPage = 5000) {
+        return apiGet('/api/issues', { repo_id: repoId, per_page: perPage });
     },
 
-    async checkForUpdates(repoId, lastTimestamp) {
+    async checkForUpdates(repoId, lastTimestamp, perPage = 5000) {
         return apiGet('/api/issues', {
             repo_id: repoId,
             check_updates: 1,
-            last_timestamp: lastTimestamp
+            last_timestamp: lastTimestamp,
+            per_page: perPage
         });
     },
 
@@ -31,10 +32,11 @@ const API = {
         });
     },
 
-    async analyzeIssues(repoId) {
+    async analyzeIssues(repoId, issueIds = []) {
         return apiPost('/api/analyze', {
             action: 'analyze_batch',
-            repo_id: repoId
+            repo_id: repoId,
+            issue_ids: issueIds
         });
     },
 
@@ -45,18 +47,34 @@ const API = {
         });
     },
 
-    async saveModelPreferences(assessmentModel, prCreationModel) {
-        return settingsApi('save_model_preferences', {
-            assessment_model: assessmentModel,
-            pr_creation_model: prCreationModel
+    async cancelPR(issueId) {
+        return apiPost('/api/issues', {
+            action: 'cancel_pr',
+            issue_id: issueId
         });
     },
 
-    async saveRepo(id, localPath, defaultBranch, autoCreatePr) {
+    async saveModelPreferences(assessmentModel, prCreationModel, codeReviewModel) {
+        return settingsApi('save_model_preferences', {
+            assessment_model: assessmentModel,
+            pr_creation_model: prCreationModel,
+            code_review_model: codeReviewModel
+        });
+    },
+
+    async testConnection(model, modelType) {
+        return settingsApi('test_connection', {
+            model: model,
+            model_type: modelType
+        });
+    },
+
+    async saveRepo(id, localPath, defaultBranch, autoCreatePr, defaultMode) {
         return settingsApi('save_repo', {
             id: id,
             local_path: localPath,
             default_branch: defaultBranch,
+            default_mode: defaultMode,
             auto_create_pr: autoCreatePr
         });
     },
@@ -76,6 +94,7 @@ const API = {
             name: name,
             local_path: '',
             default_branch: 'main',
+            default_mode: 'plan',
             auto_create_pr: 0
         });
     }

@@ -1,0 +1,14 @@
+Create a pull request for the current branch.
+
+Required:
+- Base branch: {{default_branch}}
+- Head branch: {{branch_name}}
+- Title: Fix {{source_id}}: {{title}}
+- Body: summarize what changed and why; reference the original issue.
+
+If PR creation succeeds, output:
+ISSUE_PR_CREATED:{{callback_id}}
+And include the PR URL in your response.
+
+If PR creation fails, output:
+ISSUE_PR_FAILED:{{callback_id}}

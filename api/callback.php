@@ -6,6 +6,19 @@ header('Content-Type: application/json');
 // Include database library
 require_once __DIR__ . '/../lib/db.php';
 
+/**
+ * Best-effort worktree cleanup for completed/cancelled runs.
+ */
+function remove_worktree($repo_root_path, $worktree_path) {
+    if (empty($repo_root_path) || empty($worktree_path) || !is_dir($worktree_path)) {
+        return;
+    }
+
+    $repoArg = escapeshellarg($repo_root_path);
+    $worktreeArg = escapeshellarg($worktree_path);
+    shell_exec("git -C $repoArg worktree remove --force $worktreeArg 2>/dev/null");
+}
+
 try {
     // Route based on request method
     $method = $_SERVER['REQUEST_METHOD'];
@@ -46,10 +59,22 @@ try {
                 break;
             }
 
-            // Check if already completed
+            // Ignore duplicate or late callbacks idempotently.
+            if ($callback['status'] === 'cancelled') {
+                remove_worktree($callback['repo_root_path'] ?? '', $callback['worktree_path'] ?? '');
+                echo json_encode([
+                    'status' => 'ok',
+                    'ignored' => true,
+                    'message' => 'Callback ignored because run was cancelled'
+                ]);
+                break;
+            }
             if ($callback['status'] !== 'pending') {
-                http_response_code(400);
-                echo json_encode(['error' => 'Callback already processed']);
+                echo json_encode([
+                    'status' => 'ok',
+                    'ignored' => true,
+                    'message' => 'Callback already processed'
+                ]);
                 break;
             }
 
@@ -65,6 +90,8 @@ try {
                 }
             } elseif ($status === 'failed') {
                 $pr_status = 'failed';
+            } elseif ($status === 'needs_review') {
+                $pr_status = 'needs_review';
             }
 
             // Update the issue
@@ -95,6 +122,8 @@ try {
                  WHERE callback_id = ?",
                 [$status, $callback_id]
             );
+
+            remove_worktree($callback['repo_root_path'] ?? '', $callback['worktree_path'] ?? '');
 
             // Log any error details if provided
             if ($error) {

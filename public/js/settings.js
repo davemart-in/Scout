@@ -8,6 +8,36 @@ async function openSettingsModal() {
     updateSettingsModal();
 }
 
+async function testModelConnection(button) {
+    const modelType = button.dataset.modelType;
+    const selectIdMap = {
+        'assessment': 'assessment-model',
+        'pr-creation': 'pr-creation-model',
+        'code-review': 'code-review-model'
+    };
+    const selectId = selectIdMap[modelType] || 'pr-creation-model';
+    const selectedModel = document.getElementById(selectId)?.value;
+
+    if (!selectedModel) {
+        showToast('Please select a model first', 'warning');
+        return;
+    }
+
+    button.disabled = true;
+    const originalText = button.textContent;
+    button.textContent = 'Testing...';
+
+    try {
+        await API.testConnection(selectedModel, modelType);
+        showToast(`✓ ${selectedModel} connected successfully`, 'success');
+    } catch (error) {
+        showToast(error.message || `Failed to connect to ${selectedModel}`, 'error');
+    } finally {
+        button.disabled = false;
+        button.textContent = originalText;
+    }
+}
+
 function closeSettingsModal() {
     state.modalOpen = false;
     document.body.classList.remove('modal-open');
@@ -98,7 +128,7 @@ function renderApiKeysAlert() {
 }
 
 function renderModelSelection() {
-    const { available_models, assessment_model, pr_creation_model } = state.settings;
+    const { available_models, assessment_model, pr_creation_model, code_review_model } = state.settings;
 
     if (!available_models || available_models.length === 0) {
         return _tmpl('noModels', {});
@@ -117,21 +147,51 @@ function renderModelSelection() {
         </option>`
     ).join('');
 
+    const codeReviewOptions = available_models.map(model =>
+        `<option value="${model.value}" ${model.value === code_review_model ? 'selected' : ''}>
+            ${model.label} (${model.provider})
+        </option>`
+    ).join('');
+
     return _tmpl('modelSelection', {
         assessmentOptions,
-        prCreationOptions
+        prCreationOptions,
+        codeReviewOptions
     });
 }
 
 function renderRepoRow(repo) {
+    const defaultMode = (repo.default_mode || 'plan').toLowerCase();
+
     return _tmpl('repoRow', {
         id: repo.id,
         name: repo.name,
         source: repo.source,
         localPath: repo.local_path || '',
         defaultBranch: repo.default_branch || 'main',
+        modeAcceptSelected: defaultMode === 'accept' ? 'selected' : '',
+        modeAskSelected: defaultMode === 'ask' ? 'selected' : '',
+        modePlanSelected: defaultMode === 'plan' ? 'selected' : '',
         autoCreatePr: repo.auto_create_pr ? 'checked' : ''
     });
+}
+
+function filterRepoSelectionList(query) {
+    const normalizedQuery = (query || '').trim().toLowerCase();
+    const repoRows = document.querySelectorAll('#repoSelectionContainer .repo-checkbox');
+    const emptyState = document.getElementById('repoSelectionEmpty');
+
+    let visibleCount = 0;
+    repoRows.forEach(row => {
+        const repoName = (row.dataset.repoName || '').toLowerCase();
+        const isMatch = normalizedQuery === '' || repoName.includes(normalizedQuery);
+        row.style.display = isMatch ? '' : 'none';
+        if (isMatch) visibleCount++;
+    });
+
+    if (emptyState) {
+        emptyState.style.display = visibleCount === 0 ? 'block' : 'none';
+    }
 }
 
 // Fetch and show repos for selection
@@ -163,9 +223,9 @@ async function fetchAndShowRepos(source) {
 
         // Build checkboxes HTML
         const repoCheckboxes = availableRepos.map(repo => `
-            <label class="repo-checkbox">
-                <input type="checkbox" value="${repo.source_id}" data-name="${repo.name}">
-                <span>${repo.name}</span>
+            <label class="repo-checkbox" data-repo-name="${escapeHtml(repo.name)}">
+                <input type="checkbox" value="${escapeHtml(repo.source_id)}" data-name="${escapeHtml(repo.name)}">
+                <span>${escapeHtml(repo.name)}</span>
             </label>
         `).join('');
 
@@ -180,6 +240,11 @@ async function fetchAndShowRepos(source) {
         tempContainer.innerHTML = selectionModal;
         document.body.appendChild(tempContainer);
 
+        const searchInput = document.getElementById('repoSelectionSearch');
+        if (searchInput) {
+            searchInput.focus();
+        }
+
         // Store source for later
         state.currentSource = source;
 
@@ -192,6 +257,11 @@ async function fetchAndShowRepos(source) {
 function attachSettingsEventHandlers() {
     // Track changes to repository fields
     document.addEventListener('input', (e) => {
+        if (e.target.id === 'repoSelectionSearch') {
+            filterRepoSelectionList(e.target.value);
+            return;
+        }
+
         const repoRow = e.target.closest('tr[data-repo-id]');
         if (repoRow && (
             e.target.classList.contains('repo-local-path') ||
@@ -207,7 +277,10 @@ function attachSettingsEventHandlers() {
     // Track changes to checkboxes
     document.addEventListener('change', (e) => {
         const repoRow = e.target.closest('tr[data-repo-id]');
-        if (repoRow && e.target.classList.contains('repo-auto-pr')) {
+        if (repoRow && (
+            e.target.classList.contains('repo-auto-pr') ||
+            e.target.classList.contains('repo-default-mode')
+        )) {
             const saveBtn = repoRow.querySelector('.save-repo');
             if (saveBtn) {
                 saveBtn.disabled = false;
@@ -233,9 +306,10 @@ function attachSettingsEventHandlers() {
             const row = saveBtn.closest('tr');
             const localPath = row.querySelector('.repo-local-path').value;
             const branch = row.querySelector('.repo-branch').value;
+            const defaultMode = row.querySelector('.repo-default-mode').value;
             const autoPr = row.querySelector('.repo-auto-pr').checked;
 
-            await API.saveRepo(repoId, localPath, branch, autoPr);
+            await API.saveRepo(repoId, localPath, branch, autoPr, defaultMode);
             showToast('Repository saved successfully', 'success');
 
             // Disable the save button after successful save
@@ -264,24 +338,17 @@ function attachSettingsEventHandlers() {
 
         // Test connection
         if (e.target.classList.contains('test-connection')) {
-            const modelType = e.target.dataset.modelType;
-            const selectId = modelType === 'assessment' ? 'assessment-model' : 'pr-creation-model';
-            const selectedModel = document.getElementById(selectId)?.value;
-
-            if (selectedModel) {
-                showToast(`Testing connection to ${selectedModel}... (will be implemented in Prompt 7)`, 'info');
-            } else {
-                showToast('Please select a model first', 'warning');
-            }
+            await testModelConnection(e.target);
         }
 
         // Save model preferences
         if (e.target.id === 'save-model-preferences') {
             const assessmentModel = document.getElementById('assessment-model')?.value;
             const prCreationModel = document.getElementById('pr-creation-model')?.value;
+            const codeReviewModel = document.getElementById('code-review-model')?.value;
 
-            if (assessmentModel && prCreationModel) {
-                await API.saveModelPreferences(assessmentModel, prCreationModel);
+            if (assessmentModel && prCreationModel && codeReviewModel) {
+                await API.saveModelPreferences(assessmentModel, prCreationModel, codeReviewModel);
                 showToast('Model preferences saved successfully', 'success');
                 await loadSettings();
                 updateSettingsModal();

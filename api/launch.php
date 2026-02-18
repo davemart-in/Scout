@@ -9,6 +9,48 @@ require_once __DIR__ . '/../lib/utils.php';
 
 // Template processing and slugify functions moved to lib/utils.php
 
+$cleanupRepoRoot = null;
+$cleanupWorktreePath = null;
+$cleanupPromptFiles = [];
+
+/**
+ * Create a worktree and recover once from stale Scout worktree metadata.
+ */
+function add_worktree_with_recovery($repoRootPathArg, $branchNameArg, $worktreePathArg, $originBranchArg) {
+    $addOutput = [];
+    $addCode = 0;
+    exec("git -C $repoRootPathArg worktree add -b $branchNameArg $worktreePathArg $originBranchArg 2>&1", $addOutput, $addCode);
+
+    if ($addCode === 0) {
+        return;
+    }
+
+    $combinedOutput = implode("\n", $addOutput);
+    $alreadyUsedPattern = "/fatal:\\s+'[^']+'\\s+is already used by worktree at\\s+'([^']+)'/";
+    if (!preg_match($alreadyUsedPattern, $combinedOutput, $matches)) {
+        throw new Exception('Failed to create worktree: ' . $combinedOutput);
+    }
+
+    $staleWorktreePath = $matches[1];
+    $scoutWorktreeRoot = rtrim(sys_get_temp_dir(), '/') . '/scout-worktrees/';
+
+    // Only force-remove stale paths that belong to Scout's temp worktree root.
+    if (strpos($staleWorktreePath, $scoutWorktreeRoot) === 0 && is_dir($staleWorktreePath)) {
+        $staleWorktreeArg = escapeshellarg($staleWorktreePath);
+        exec("git -C $repoRootPathArg worktree remove --force $staleWorktreeArg 2>&1");
+    }
+
+    // Prune stale admin entries (including missing directories) before retrying once.
+    exec("git -C $repoRootPathArg worktree prune 2>&1");
+
+    $retryOutput = [];
+    $retryCode = 0;
+    exec("git -C $repoRootPathArg worktree add -b $branchNameArg $worktreePathArg $originBranchArg 2>&1", $retryOutput, $retryCode);
+    if ($retryCode !== 0) {
+        throw new Exception('Failed to create worktree: ' . implode("\n", $retryOutput));
+    }
+}
+
 try {
     // Route based on request method
     $method = $_SERVER['REQUEST_METHOD'];
@@ -28,7 +70,7 @@ try {
 
             // Fetch issue and repo from database
             $issue = db_get_one(
-                "SELECT i.*, r.local_path, r.source, r.auto_create_pr, r.default_branch
+                "SELECT i.*, r.local_path, r.source, r.auto_create_pr, r.default_branch, r.default_mode
                  FROM issues i
                  JOIN repos r ON i.repo_id = r.id
                  WHERE i.id = ?",
@@ -55,22 +97,67 @@ try {
                 break;
             }
 
-            // Get model from settings
-            $model = get_setting('pr_creation_model');
-            if (!$model) {
-                $model = 'claude-3-5-sonnet-20241022'; // Default fallback
+            // Get code creation model from settings
+            $creationModel = get_setting('pr_creation_model');
+            if (!$creationModel) {
+                $creationModel = 'claude-opus-4-6';
             }
 
-            // Get Claude CLI model name
-            $cliModel = get_claude_model_mapping($model);
+            // Get code review model from settings
+            $reviewModel = get_setting('code_review_model');
+            if (!$reviewModel) {
+                if (!empty(get_env_value('OPENAI_KEY'))) {
+                    $reviewModel = 'gpt-5.2';
+                } elseif (!empty(get_env_value('ANTHROPIC_KEY'))) {
+                    $reviewModel = 'claude-sonnet-4-5';
+                } else {
+                    $reviewModel = 'gpt-5.2';
+                }
+            }
+
+            // Claude CLI model for code creation/rework/PR tasks
+            $creationCliModel = get_claude_model_mapping($creationModel);
 
             // Generate unique callback ID
             $callback_id = uniqid('cb_');
+            $short_callback = substr($callback_id, -6);
 
-            // Read PR creation template
-            $template = file_get_contents(__DIR__ . '/../lib/prompts/pr-creation.txt');
-            if (!$template) {
-                throw new Exception('Could not read PR creation template');
+            $defaultBranch = $issue['default_branch'] ?: 'main';
+            $defaultModeRaw = strtolower(trim((string)($issue['default_mode'] ?? 'plan')));
+            $defaultMode = in_array($defaultModeRaw, ['accept', 'ask', 'plan'], true) ? $defaultModeRaw : 'plan';
+            $branchName = 'fix/' . $issue['source_id'] . '-' . slugify($issue['title']) . '-' . $short_callback;
+
+            $worktreeRoot = sys_get_temp_dir() . '/scout-worktrees/' . intval($issue['repo_id']);
+            if (!is_dir($worktreeRoot) && !mkdir($worktreeRoot, 0755, true) && !is_dir($worktreeRoot)) {
+                throw new Exception('Failed to create worktree directory');
+            }
+            $worktreePath = $worktreeRoot . '/' . $callback_id;
+
+            $repoRootPathArg = escapeshellarg($issue['local_path']);
+            $defaultBranchArg = escapeshellarg($defaultBranch);
+            $branchNameArg = escapeshellarg($branchName);
+            $worktreePathArg = escapeshellarg($worktreePath);
+            $originBranchArg = escapeshellarg('origin/' . $defaultBranch);
+
+            // Always branch from latest origin/default branch to avoid cross-PR contamination.
+            $fetchOutput = [];
+            $fetchCode = 0;
+            exec("git -C $repoRootPathArg fetch origin $defaultBranchArg 2>&1", $fetchOutput, $fetchCode);
+            if ($fetchCode !== 0) {
+                throw new Exception('Failed to fetch origin/' . $defaultBranch . ': ' . implode("\n", $fetchOutput));
+            }
+
+            add_worktree_with_recovery($repoRootPathArg, $branchNameArg, $worktreePathArg, $originBranchArg);
+            $cleanupRepoRoot = $issue['local_path'];
+            $cleanupWorktreePath = $worktreePath;
+
+            // Read run templates
+            $implementTemplate = file_get_contents(__DIR__ . '/../lib/prompts/pr-creation.txt');
+            $reviewTemplate = file_get_contents(__DIR__ . '/../lib/prompts/code-review.txt');
+            $reworkTemplate = file_get_contents(__DIR__ . '/../lib/prompts/rework-from-review.txt');
+            $prTemplate = file_get_contents(__DIR__ . '/../lib/prompts/create-pr.txt');
+            if (!$implementTemplate || !$reviewTemplate || !$reworkTemplate || !$prTemplate) {
+                throw new Exception('Could not read one or more launch prompt templates');
             }
 
             // Format labels
@@ -93,6 +180,8 @@ try {
                 'labels' => $labels,
                 'source_id' => $issue['source_id'],
                 'slug' => slugify($issue['title']),
+                'default_branch' => $defaultBranch,
+                'branch_name' => $branchName,
                 'callback_id' => $callback_id,
                 'context' => $context,
                 'has_context' => !empty($context),
@@ -101,15 +190,28 @@ try {
                 'is_linear' => $issue['source'] === 'linear'
             ];
 
-            // Process template
-            $prompt = process_template($template, $templateData);
+            // Process templates
+            $implementPrompt = process_template($implementTemplate, $templateData);
+            $reviewPrompt = process_template($reviewTemplate, $templateData);
+            $reworkPromptTemplate = process_template($reworkTemplate, $templateData);
+            $prPrompt = process_template($prTemplate, $templateData);
 
-            // Save prompt to temp file
-            $promptFile = tempnam(sys_get_temp_dir(), 'scout_prompt_');
-            file_put_contents($promptFile, $prompt);
+            // Save prompts to temp files
+            $implementPromptFile = tempnam(sys_get_temp_dir(), 'scout_impl_');
+            $reviewPromptFile = tempnam(sys_get_temp_dir(), 'scout_review_');
+            $reworkPromptFile = tempnam(sys_get_temp_dir(), 'scout_rework_');
+            $prPromptFile = tempnam(sys_get_temp_dir(), 'scout_pr_');
+            if (!$implementPromptFile || !$reviewPromptFile || !$reworkPromptFile || !$prPromptFile) {
+                throw new Exception('Failed to create temporary prompt files');
+            }
+
+            file_put_contents($implementPromptFile, $implementPrompt);
+            file_put_contents($reviewPromptFile, $reviewPrompt);
+            file_put_contents($reworkPromptFile, $reworkPromptTemplate);
+            file_put_contents($prPromptFile, $prPrompt);
+            $cleanupPromptFiles = [$implementPromptFile, $reviewPromptFile, $reworkPromptFile, $prPromptFile];
 
             // Update issue status
-            $branchName = 'fix/' . $issue['source_id'] . '-' . slugify($issue['title']);
             db_query(
                 "UPDATE issues
                  SET pr_status = 'in_progress',
@@ -121,9 +223,9 @@ try {
 
             // Save callback record
             db_query(
-                "INSERT INTO callbacks (issue_id, callback_id, status, created_at)
-                 VALUES (?, ?, 'pending', CURRENT_TIMESTAMP)",
-                [$issue_id, $callback_id]
+                "INSERT INTO callbacks (issue_id, callback_id, status, worktree_path, repo_root_path, branch_name, created_at)
+                 VALUES (?, ?, 'pending', ?, ?, ?, CURRENT_TIMESTAMP)",
+                [$issue_id, $callback_id, $worktreePath, $issue['local_path'], $branchName]
             );
 
             // Prepare callback URL
@@ -137,13 +239,20 @@ try {
 
             // Build command
             $command = sprintf(
-                'bash %s %s %s %s %s %s',
+                'bash %s %s %s %s %s %s %s %s %s %s %s %s %s',
                 escapeshellarg($wrapperScript),
                 escapeshellarg($issue['local_path']),
-                escapeshellarg($promptFile),
+                escapeshellarg($worktreePath),
+                escapeshellarg($implementPromptFile),
+                escapeshellarg($reviewPromptFile),
+                escapeshellarg($reworkPromptFile),
+                escapeshellarg($prPromptFile),
                 escapeshellarg($callback_url),
                 escapeshellarg($callback_id),
-                escapeshellarg($cliModel)
+                escapeshellarg($creationCliModel),
+                escapeshellarg($defaultMode),
+                escapeshellarg($reviewModel),
+                escapeshellarg((bool)$issue['auto_create_pr'] ? '1' : '0')
             );
 
             // Detect OS and launch in new terminal
@@ -184,10 +293,7 @@ SHELL;
                     escapeshellarg($command . '; echo "Press any key to close..."; read -n 1')
                 );
             } else {
-                // Windows or other: Not supported yet
-                http_response_code(500);
-                echo json_encode(['error' => 'Unsupported operating system: ' . $os]);
-                break;
+                throw new Exception('Unsupported operating system: ' . $os);
             }
 
             // Launch the command in background to avoid blocking
@@ -208,19 +314,20 @@ SHELL;
                 exec($launchCommand . ' 2>&1', $output, $returnCode);
             }
 
-            // Clean up prompt file after a delay (it needs to be read by the wrapper)
-            // Register a shutdown function to clean it up
-            register_shutdown_function(function() use ($promptFile) {
-                @unlink($promptFile);
-            });
+            if ($returnCode !== 0) {
+                throw new Exception('Failed to launch terminal process');
+            }
 
             // Return success
             echo json_encode([
                 'status' => 'launched',
                 'callback_id' => $callback_id,
                 'branch' => $branchName,
-                'model' => $cliModel
+                'model' => $creationCliModel
             ]);
+            $cleanupRepoRoot = null;
+            $cleanupWorktreePath = null;
+            $cleanupPromptFiles = [];
             break;
 
         default:
@@ -232,6 +339,18 @@ SHELL;
     }
 
 } catch (Exception $e) {
+    if (!empty($cleanupRepoRoot) && !empty($cleanupWorktreePath) && is_dir($cleanupWorktreePath)) {
+        $repoRootArg = escapeshellarg($cleanupRepoRoot);
+        $worktreeArg = escapeshellarg($cleanupWorktreePath);
+        shell_exec("git -C $repoRootArg worktree remove --force $worktreeArg 2>/dev/null");
+    }
+    if (!empty($cleanupPromptFiles) && is_array($cleanupPromptFiles)) {
+        foreach ($cleanupPromptFiles as $cleanupPromptFile) {
+            if (!empty($cleanupPromptFile) && file_exists($cleanupPromptFile)) {
+                @unlink($cleanupPromptFile);
+            }
+        }
+    }
     http_response_code(500);
     echo json_encode([
         'error' => 'Server error: ' . $e->getMessage()

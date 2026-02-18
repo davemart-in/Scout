@@ -51,9 +51,10 @@ function ai_analyze_issue($issue, $model) {
  * @param string $prompt Prompt text
  * @param string $model Model name
  * @param string $api_key API key
+ * @param bool $require_json Whether to enforce JSON response format
  * @return string Response content
  */
-function openai_chat($prompt, $model, $api_key) {
+function openai_chat($prompt, $model, $api_key, $require_json = true) {
     // Get API model name
     $apiModel = get_openai_model_mapping($model);
 
@@ -69,9 +70,12 @@ function openai_chat($prompt, $model, $api_key) {
         'messages' => [
             ['role' => 'user', 'content' => $prompt]
         ],
-        'temperature' => 0.3,
-        'response_format' => ['type' => 'json_object']
+        'temperature' => 0.3
     ];
+
+    if ($require_json) {
+        $data['response_format'] = ['type' => 'json_object'];
+    }
 
     // Make API call
     $ch = curl_init($url);

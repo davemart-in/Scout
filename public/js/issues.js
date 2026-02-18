@@ -2,6 +2,8 @@
 
 const IssuesManager = {
     currentIssues: [],
+    activeTab: 'active',
+    hasMoreIssues: true,
     lastSync: null,
     lastUpdateTimestamp: null,
     pollingInterval: null,
@@ -23,8 +25,9 @@ const IssuesManager = {
         }
 
         try {
-            const result = await API.fetchIssues(repoId);
+            const result = await API.fetchIssues(repoId, 5000);
             this.currentIssues = result.issues || [];
+            this.hasMoreIssues = result.has_more !== false;
             this.lastSync = new Date();
             this.renderIssues();
             this.updateStatusBar();
@@ -56,13 +59,40 @@ const IssuesManager = {
 
         try {
             const result = await API.syncIssues(repoId);
-            showToast(`Synced ${result.new} new, ${result.updated} updated issues`, 'success');
+            const fetchedCount = result.fetched_count ?? result.total ?? 0;
+            if ((result.new ?? 0) > 0) {
+                showToast(`Fetched ${fetchedCount} issues (${result.new} new, ${result.updated ?? 0} updated)`, 'success');
+            } else if (fetchedCount > 0) {
+                showToast(`Fetched ${fetchedCount} issues, but no new issues were added`, 'info');
+            } else {
+                showToast(result.message || 'No more issues to fetch', 'info');
+            }
+            this.hasMoreIssues = result.has_more !== false;
 
             // Reload issues after sync
-            await this.loadIssues(repoId);
+            await this.loadIssues(repoId, false);
         } catch (error) {
             showToast('Failed to sync issues', 'error');
         }
+    },
+
+    getTooComplexIssues() {
+        return this.currentIssues.filter(issue => issue.assessment === 'too_complex');
+    },
+
+    getActiveIssues() {
+        return this.currentIssues.filter(issue => issue.assessment !== 'too_complex');
+    },
+
+    getVisibleIssues() {
+        return this.activeTab === 'too_complex' ? this.getTooComplexIssues() : this.getActiveIssues();
+    },
+
+    setTab(tab) {
+        if (!['active', 'too_complex'].includes(tab)) return;
+        this.activeTab = tab;
+        this.renderIssues();
+        this.updateButtonStyles();
     },
 
     renderIssues() {
@@ -74,11 +104,19 @@ const IssuesManager = {
             return;
         }
 
+        const activeIssues = this.getActiveIssues();
+        const tooComplexIssues = this.getTooComplexIssues();
+        const visibleIssues = this.getVisibleIssues();
+
         // Build issue rows
-        const issueRows = this.currentIssues.map(issue => this.renderIssueRow(issue)).join('');
+        const issueRows = visibleIssues.map(issue => this.renderIssueRow(issue)).join('');
 
         mainContent.innerHTML = _tmpl('issuesTable', {
-            issueRows
+            issueRows: issueRows || '<tr><td colspan="6" class="empty-state">No issues in this tab</td></tr>',
+            activeCount: activeIssues.length,
+            tooComplexCount: tooComplexIssues.length,
+            activeTabClass: this.activeTab === 'active' ? 'active' : '',
+            tooComplexTabClass: this.activeTab === 'too_complex' ? 'active' : ''
         });
 
         this.updateIssueCount();
@@ -126,8 +164,8 @@ const IssuesManager = {
         const countElement = document.querySelector('.issue-count');
         if (!countElement) return;
 
-        const openCount = this.currentIssues.filter(i => i.status === 'open').length;
-        countElement.textContent = `${openCount} open issue${openCount !== 1 ? 's' : ''}`;
+        const visibleOpenCount = this.getVisibleIssues().filter(i => i.status === 'open').length;
+        countElement.textContent = `${visibleOpenCount} open issue${visibleOpenCount !== 1 ? 's' : ''}`;
     },
 
     updateStatusBar() {
@@ -153,7 +191,10 @@ const IssuesManager = {
             return;
         }
 
-        const initialPendingCount = this.currentIssues.filter(i => i.assessment === 'pending').length;
+        const visiblePendingIssueIds = this.getVisibleIssues()
+            .filter(i => i.assessment === 'pending')
+            .map(i => parseInt(i.id, 10));
+        const initialPendingCount = visiblePendingIssueIds.length;
         if (initialPendingCount === 0) {
             showToast('No pending issues to analyze', 'info');
             return;
@@ -182,7 +223,7 @@ const IssuesManager = {
                     progressIndicator.textContent = `Analyzing: ${totalAnalyzed}/${initialPendingCount} completed...`;
                 }
 
-                const result = await API.analyzeIssues(repoId);
+                const result = await API.analyzeIssues(repoId, visiblePendingIssueIds);
 
                 if (result.analyzed > 0) {
                     totalAnalyzed += result.analyzed;
@@ -223,7 +264,7 @@ const IssuesManager = {
         }
 
         // Get PR creation model from settings
-        const model = state.settings?.pr_creation_model || 'claude-3-5-sonnet-20241022';
+        const model = state.settings?.pr_creation_model || 'claude-opus-4-6';
 
         // Build summary HTML if summary exists
         const summaryHtml = issue.summary
@@ -317,20 +358,24 @@ const IssuesManager = {
                 closeModal();
 
                 // Update UI to show in-progress status
-                if (issueRow) {
-                    const actionCell = issueRow.querySelector('.action-cell');
-                    if (actionCell) {
-                        actionCell.innerHTML = '<span class="status-badge badge-blue">In Progress...</span>';
-                    }
-                    // Add a subtle highlight animation
-                    issueRow.classList.add('row-highlight');
-                    setTimeout(() => issueRow.classList.remove('row-highlight'), 1000);
-                }
-
                 // Update the issue in our local state
                 const issueIndex = this.currentIssues.findIndex(i => parseInt(i.id) === parseInt(issueId));
                 if (issueIndex >= 0) {
                     this.currentIssues[issueIndex].pr_status = 'in_progress';
+                }
+
+                // Update UI to show in-progress status
+                if (issueRow) {
+                    const actionCell = issueRow.querySelector('.action-cell');
+                    if (actionCell) {
+                        const issueData = issueIndex >= 0
+                            ? this.currentIssues[issueIndex]
+                            : { id: issueId, pr_status: 'in_progress' };
+                        actionCell.innerHTML = createActionContent(issueData);
+                    }
+                    // Add a subtle highlight animation
+                    issueRow.classList.add('row-highlight');
+                    setTimeout(() => issueRow.classList.remove('row-highlight'), 1000);
                 }
 
                 // Reload issues after a short delay
@@ -377,11 +422,15 @@ const IssuesManager = {
             refreshButton.disabled = true;
         }
 
+        fetchButton.textContent = this.hasMoreIssues ? 'Fetch 50 Issues' : 'No more issues';
+        fetchButton.disabled = !this.hasMoreIssues;
+
         // Analyze button is disabled if no models available OR no issues loaded
         const canAnalyze = state.settings &&
                           state.settings.available_models &&
                           state.settings.available_models.length > 0;
-        analyzeButton.disabled = !canAnalyze || this.currentIssues.length === 0;
+        const hasVisiblePending = this.getVisibleIssues().some(i => i.assessment === 'pending');
+        analyzeButton.disabled = !canAnalyze || this.currentIssues.length === 0 || !hasVisiblePending || this.activeTab !== 'active';
     },
 
     // Start polling for issue updates
@@ -421,7 +470,8 @@ const IssuesManager = {
         try {
             const params = new URLSearchParams({
                 repo_id: repoId,
-                check_updates: 1
+                check_updates: 1,
+                per_page: 5000
             });
 
             if (this.lastUpdateTimestamp) {
@@ -435,6 +485,7 @@ const IssuesManager = {
             if (result.last_updated && result.last_updated !== this.lastUpdateTimestamp) {
                 this.lastUpdateTimestamp = result.last_updated;
                 this.currentIssues = result.issues || [];
+                this.hasMoreIssues = result.has_more !== false;
                 this.renderIssues();
                 this.updateStatusBar();
                 this.updateButtonStyles();

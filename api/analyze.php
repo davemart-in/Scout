@@ -23,6 +23,7 @@ try {
                     // Get parameters
                     $repoId = $input['repo_id'] ?? null;
                     $model = $input['model'] ?? null;
+                    $issueIds = $input['issue_ids'] ?? [];
 
                     if (!$repoId) {
                         http_response_code(400);
@@ -33,12 +34,22 @@ try {
                     // Get model with fallback
                     $model = get_assessment_model($model);
 
-                    // Fetch up to 5 pending issues from this repo
+                    $issueIds = is_array($issueIds) ? array_values(array_filter(array_map('intval', $issueIds))) : [];
+                    $pendingParams = [$repoId];
+                    $pendingFilterSql = '';
+
+                    if (!empty($issueIds)) {
+                        $placeholders = implode(',', array_fill(0, count($issueIds), '?'));
+                        $pendingFilterSql = " AND id IN ($placeholders)";
+                        $pendingParams = array_merge($pendingParams, $issueIds);
+                    }
+
+                    // Fetch up to 5 pending issues from this repo and optional issue scope.
                     $pendingIssues = db_get_all(
                         "SELECT * FROM issues
-                         WHERE repo_id = ? AND assessment = 'pending'
+                         WHERE repo_id = ? AND assessment = 'pending' $pendingFilterSql
                          LIMIT 5",
-                        [$repoId]
+                        $pendingParams
                     );
 
                     $analyzed = 0;
@@ -89,8 +100,8 @@ try {
                     // Count remaining pending issues
                     $remainingRow = db_get_one(
                         "SELECT COUNT(*) as count FROM issues
-                         WHERE repo_id = ? AND assessment = 'pending'",
-                        [$repoId]
+                         WHERE repo_id = ? AND assessment = 'pending' $pendingFilterSql",
+                        $pendingParams
                     );
                     $remaining = $remainingRow['count'] ?? 0;
 

@@ -196,6 +196,86 @@ function linear_fetch_issues($token, $team_id, $limit = 100) {
 }
 
 /**
+ * Fetch a single page of issues for a Linear team.
+ */
+function linear_fetch_issues_page($token, $team_id, $limit = 50, $after = null) {
+    $query = 'query($teamId: String!, $first: Int!, $after: String) {
+        team(id: $teamId) {
+            issues(
+                filter: { state: { type: { nin: ["completed", "canceled"] } } },
+                first: $first,
+                after: $after
+            ) {
+                pageInfo {
+                    hasNextPage
+                    endCursor
+                }
+                nodes {
+                    id
+                    identifier
+                    url
+                    title
+                    description
+                    priority
+                    priorityLabel
+                    labels {
+                        nodes {
+                            name
+                        }
+                    }
+                    state {
+                        name
+                        type
+                    }
+                    createdAt
+                }
+            }
+        }
+    }';
+
+    $variables = [
+        'teamId' => $team_id,
+        'first' => min(max(intval($limit), 1), 100),
+        'after' => $after
+    ];
+
+    $data = linear_request($query, $token, $variables);
+    $issuesData = $data['team']['issues'] ?? ['nodes' => [], 'pageInfo' => ['hasNextPage' => false, 'endCursor' => null]];
+
+    $issues = [];
+    foreach ($issuesData['nodes'] as $issue) {
+        $labels = [];
+        if (isset($issue['labels']['nodes'])) {
+            foreach ($issue['labels']['nodes'] as $label) {
+                $labels[] = $label['name'];
+            }
+        }
+
+        $status = 'open';
+        if (isset($issue['state']['type']) && in_array($issue['state']['type'], ['completed', 'canceled'])) {
+            $status = 'closed';
+        }
+
+        $issues[] = [
+            'source_id' => $issue['identifier'],
+            'source_url' => $issue['url'],
+            'title' => $issue['title'],
+            'description' => $issue['description'] ?? '',
+            'labels' => $labels,
+            'priority' => $issue['priorityLabel'],
+            'status' => $status,
+            'created_at' => $issue['createdAt']
+        ];
+    }
+
+    return [
+        'issues' => $issues,
+        'has_next' => (bool)($issuesData['pageInfo']['hasNextPage'] ?? false),
+        'end_cursor' => $issuesData['pageInfo']['endCursor'] ?? null
+    ];
+}
+
+/**
  * Validate a Linear token
  */
 function linear_validate_token($token) {
